@@ -1,0 +1,323 @@
+# Build and publish pre-built native binaries for supported platforms
+
+name: Build Pre-built Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  NODE_VERSION: '20'
+  OPENCV_VERSION: '4.12.0'
+  ZXING_VERSION: '2.3.0'
+  ZBAR_REF: '0.23.93'
+
+jobs:
+  # =============================================================================
+  # Linux x64 (glibc)
+  # =============================================================================
+  linux-x64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf automake libtool pkg-config gettext autopoint \
+            build-essential cmake git curl unzip \
+            libjpeg-dev libpng-dev libwebp-dev zlib1g-dev
+
+      - name: Build OpenCV static
+        env:
+          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
+          INSTALL_DIR: /home/runner/opencv-static
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          bash scripts/build-opencv-static.sh
+
+      - name: Build ZBar static
+        env:
+          ZBAR_REF: ${{ env.ZBAR_REF }}
+          INSTALL_DIR: /home/runner/zbar-static
+        run: |
+          chmod +x scripts/build-zbar-static.sh
+          bash scripts/build-zbar-static.sh
+
+      - name: Build ZXing static
+        env:
+          ZXING_VERSION: ${{ env.ZXING_VERSION }}
+          INSTALL_DIR: /home/runner/zxing-static
+        run: |
+          chmod +x scripts/build-zxing-static.sh
+          bash scripts/build-zxing-static.sh
+
+      - name: Build native addon
+        env:
+          npm_config_opencv_include_dir: /home/runner/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /home/runner/opencv-static/lib
+          npm_config_zbar_include_dir: /home/runner/zbar-static/include
+          npm_config_zbar_lib_dir: /home/runner/zbar-static/lib
+          npm_config_zxing_include_dir: /home/runner/zxing-static/include
+          npm_config_zxing_lib_dir: /home/runner/zxing-static/lib
+        run: |
+          npm install
+          npx node-gyp rebuild
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/linux-x64/lib
+          cp build/Release/barcode.node npm/linux-x64/lib/addon.node
+          cp LICENSE THIRD_PARTY_NOTICES npm/linux-x64/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/linux-x64/lib/addon.node'); console.log('Addon loaded, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: npm/linux-x64/
+
+  # =============================================================================
+  # Linux ARM64 (glibc)
+  # =============================================================================
+  linux-arm64:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf automake libtool pkg-config gettext autopoint \
+            build-essential cmake git curl unzip \
+            libjpeg-dev libpng-dev libwebp-dev zlib1g-dev
+
+      - name: Build OpenCV static
+        env:
+          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
+          INSTALL_DIR: /home/runner/opencv-static
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          bash scripts/build-opencv-static.sh
+
+      - name: Build ZBar static
+        env:
+          ZBAR_REF: ${{ env.ZBAR_REF }}
+          INSTALL_DIR: /home/runner/zbar-static
+        run: |
+          chmod +x scripts/build-zbar-static.sh
+          bash scripts/build-zbar-static.sh
+
+      - name: Build ZXing static
+        env:
+          ZXING_VERSION: ${{ env.ZXING_VERSION }}
+          INSTALL_DIR: /home/runner/zxing-static
+        run: |
+          chmod +x scripts/build-zxing-static.sh
+          bash scripts/build-zxing-static.sh
+
+      - name: Build native addon
+        env:
+          npm_config_opencv_include_dir: /home/runner/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /home/runner/opencv-static/lib
+          npm_config_zbar_include_dir: /home/runner/zbar-static/include
+          npm_config_zbar_lib_dir: /home/runner/zbar-static/lib
+          npm_config_zxing_include_dir: /home/runner/zxing-static/include
+          npm_config_zxing_lib_dir: /home/runner/zxing-static/lib
+        run: |
+          npm install
+          npx node-gyp rebuild
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/linux-arm64/lib
+          cp build/Release/barcode.node npm/linux-arm64/lib/addon.node
+          cp LICENSE THIRD_PARTY_NOTICES npm/linux-arm64/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/linux-arm64/lib/addon.node'); console.log('Addon loaded, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: npm/linux-arm64/
+
+  # =============================================================================
+  # Linux x64 (musl) - Alpine
+  # =============================================================================
+  linuxmusl-x64:
+    runs-on: ubuntu-22.04
+    container:
+      image: node:20-alpine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache \
+            bash git curl unzip cmake build-base python3 \
+            autoconf automake libtool pkgconf gettext gettext-dev \
+            libjpeg-turbo-dev libpng-dev libwebp-dev zlib-dev \
+            linux-headers
+
+      - name: Build OpenCV static
+        env:
+          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
+          INSTALL_DIR: /root/opencv-static
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          bash scripts/build-opencv-static.sh
+
+      - name: Build ZBar static
+        env:
+          ZBAR_REF: ${{ env.ZBAR_REF }}
+          INSTALL_DIR: /root/zbar-static
+        run: |
+          chmod +x scripts/build-zbar-static.sh
+          bash scripts/build-zbar-static.sh
+
+      - name: Build ZXing static
+        env:
+          ZXING_VERSION: ${{ env.ZXING_VERSION }}
+          INSTALL_DIR: /root/zxing-static
+        run: |
+          chmod +x scripts/build-zxing-static.sh
+          bash scripts/build-zxing-static.sh
+
+      - name: Build native addon
+        env:
+          npm_config_opencv_include_dir: /root/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /root/opencv-static/lib
+          npm_config_zbar_include_dir: /root/zbar-static/include
+          npm_config_zbar_lib_dir: /root/zbar-static/lib
+          npm_config_zxing_include_dir: /root/zxing-static/include
+          npm_config_zxing_lib_dir: /root/zxing-static/lib
+        run: |
+          npm install
+          npx node-gyp rebuild
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/linuxmusl-x64/lib
+          cp build/Release/barcode.node npm/linuxmusl-x64/lib/addon.node
+          cp LICENSE THIRD_PARTY_NOTICES npm/linuxmusl-x64/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/linuxmusl-x64/lib/addon.node'); console.log('Addon loaded, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linuxmusl-x64
+          path: npm/linuxmusl-x64/
+
+  # =============================================================================
+  # Publish all packages to npm
+  # =============================================================================
+  publish:
+    needs: [linux-x64, linux-arm64, linuxmusl-x64]
+    runs-on: ubuntu-22.04
+    if: ${{ always() && (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish == 'true') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare packages
+        run: |
+          for platform in linux-x64 linux-arm64 linuxmusl-x64; do
+            if [ -d "artifacts/$platform" ]; then
+              cp -r artifacts/$platform/* npm/$platform/
+            else
+              echo "Skipping $platform (artifact not found)"
+            fi
+          done
+
+      - name: Verify all addons exist
+        run: |
+          for platform in linux-x64 linux-arm64 linuxmusl-x64; do
+            if [ ! -f "npm/$platform/lib/addon.node" ]; then
+              echo "Skipping $platform (addon.node not found)"
+              continue
+            fi
+            echo "✓ Found addon.node for $platform ($(stat -c%s "npm/$platform/lib/addon.node") bytes)"
+          done
+
+      - name: Determine npm dist-tag
+        id: dist-tag
+        run: |
+          ref_name="${GITHUB_REF_NAME}"
+          dist_tag="latest"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${ref_name#v}"
+            if [[ "$version" == *-* ]]; then
+              pre="${version#*-}"
+              preid="${pre%%[.+]*}"
+              if [[ -n "$preid" ]]; then
+                dist_tag="$preid"
+              fi
+            fi
+          fi
+          echo "tag=$dist_tag" >> "$GITHUB_OUTPUT"
+          echo "Using dist-tag: $dist_tag"
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PUBLISH_TAG: ${{ steps.dist-tag.outputs.tag }}
+        run: |
+          for platform in linux-x64 linux-arm64 linuxmusl-x64; do
+            if [ ! -f "npm/$platform/lib/addon.node" ]; then
+              echo "Skipping publish for $platform (addon.node not found)"
+              continue
+            fi
+            echo "Publishing @rosepetal/node-red-contrib-barcode-reader-$platform..."
+            cd npm/$platform
+            npm publish --access public --tag "$PUBLISH_TAG" || echo "Package may already exist"
+            cd ../..
+          done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PUBLISH_TAG: ${{ steps.dist-tag.outputs.tag }}
+        run: |
+          npm publish --access public --tag "$PUBLISH_TAG" || echo "Package may already exist"

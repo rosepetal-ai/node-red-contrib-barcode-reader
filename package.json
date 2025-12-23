@@ -1,0 +1,53 @@
+{
+  "name": "@rosepetal/node-red-contrib-barcode-reader",
+  "version": "1.1.1-alpha.0",
+  "description": "Rosepetal multi-decoder barcode scanner with ZBar, ZXing, and Quagga2 support",
+  "scripts": {
+    "build": "node-gyp configure && node-gyp build",
+    "rebuild": "node-gyp rebuild",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-barcode-reader.git"
+  },
+  "keywords": [
+    "node-red",
+    "barcode",
+    "zbar",
+    "zxing",
+    "quagga2",
+    "scanner"
+  ],
+  "author": "Rosepetal SL (https://www.rosepetal.ai)",
+  "contributors": [
+    {
+      "name": "Víctor González Bentué",
+      "email": "victor.gonzalez@rosepetal.ai"
+    }
+  ],
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader/issues"
+  },
+  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader#readme",
+  "dependencies": {
+    "@ericblade/quagga2": "1.12.1",
+    "node-addon-api": "^8.5.0",
+    "jpeg-js": "^0.4.4"
+  },
+  "optionalDependencies": {
+    "@rosepetal/node-red-contrib-barcode-reader-linux-x64": "1.1.1-alpha.0",
+    "@rosepetal/node-red-contrib-barcode-reader-linux-arm64": "1.1.1-alpha.0",
+    "@rosepetal/node-red-contrib-barcode-reader-linuxmusl-x64": "1.1.1-alpha.0"
+  },
+  "config": {
+    "unsafe-perm": true
+  },
+  "node-red": {
+    "version": ">=1.0.0",
+    "nodes": {
+      "barcode-reader": "barcode.js"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@rosepetal/node-red-contrib-barcode-reader-linux-arm64",
+  "version": "1.1.1-alpha.0",
+  "description": "Prebuilt native binary for Linux ARM64 (glibc)",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "libc": ["glibc"],
+  "main": "lib/addon.node",
+  "files": ["lib/addon.node", "LICENSE", "THIRD_PARTY_NOTICES"],
+  "license": "Apache-2.0",
+  "author": "Rosepetal SL (https://www.rosepetal.ai)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-barcode-reader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader/issues"
+  },
+  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

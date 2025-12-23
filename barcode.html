@@ -1,0 +1,514 @@
+<script type="text/javascript">
+    RED.nodes.registerType('barcode-reader',{
+        category: 'RP Utils',
+        color: '#a6bbcf',
+        inputs: 1,
+        outputs: 1,
+        icon: 'font-awesome/fa-barcode',
+        label: function() {
+            return this.name || "barcode-reader";
+        },
+        labelStyle: { color: '#000000' },
+        defaults: {
+            name:              { value: "barcode-reader" },
+            inputValue:        { value: "payload", required: true},
+            outputValue:       { value: "payload", required: true},
+            executionMode:     { value: "parallel" },
+            blocks:            { value: [
+                { decoder: "zbar", preprocessing: "original", options: {} }
+            ]}
+        },
+        oneditprepare: function() {
+            const node = this;
+
+            // Initialize typedInput for input and output fields
+            $('#node-input-inputValue').typedInput({
+                type: 'msg',
+                types: ['msg']
+            });
+            $('#node-input-outputValue').typedInput({
+                type: 'msg',
+                types: ['msg']
+            });
+
+            // Initialize blocks
+            const blocksContainer = $('#blocks-container');
+            const blocks = node.blocks || [];
+
+            // Render existing blocks
+            blocks.forEach((block, index) => {
+                addBlockUI(block, index);
+            });
+
+            // Add block button handler
+            $('#add-block-btn').on('click', function() {
+                const newBlock = {
+                    decoder: 'zbar',
+                    preprocessing: 'original',
+                    options: {}
+                };
+                addBlockUI(newBlock, blocks.length);
+            });
+
+            // Make blocks sortable
+            blocksContainer.sortable({
+                handle: '.drag-handle',
+                axis: 'y',
+                cursor: 'move',
+                update: function() {
+                    updateBlockNumbers();
+                }
+            });
+
+            function addBlockUI(block, index) {
+                const blockId = `block-${Date.now()}-${index}`;
+
+                const blockHTML = `
+                    <li class="block-item" data-block-id="${blockId}">
+                        <div class="block-header">
+                            <div class="block-header-left">
+                                <i class="fa fa-bars drag-handle"></i>
+                                <span class="block-number">Block ${index + 1}</span>
+                            </div>
+                            <button type="button" class="remove-block-btn">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="block-config">
+                            <div class="block-form-row">
+                                <label>Decoder</label>
+                                <select class="block-decoder">
+                                    <option value="zbar" ${block.decoder === 'zbar' ? 'selected' : ''}>ZBar</option>
+                                    <option value="zxing" ${block.decoder === 'zxing' ? 'selected' : ''}>ZXing</option>
+                                    <option value="quagga2" ${block.decoder === 'quagga2' ? 'selected' : ''}>Quagga2</option>
+                                </select>
+                            </div>
+
+                            <div class="block-form-row">
+                                <label>Preprocessing</label>
+                                <select class="block-preprocessing">
+                                    <option value="original" ${block.preprocessing === 'original' ? 'selected' : ''}>Original</option>
+                                    <option value="histogram" ${block.preprocessing === 'histogram' ? 'selected' : ''}>Histogram Equalization</option>
+                                    <option value="otsu" ${block.preprocessing === 'otsu' ? 'selected' : ''}>Otsu Threshold</option>
+                                </select>
+                            </div>
+
+                            <div class="decoder-options">
+                                <!-- ZXing options -->
+                                <div class="zxing-options" style="display: ${block.decoder === 'zxing' ? 'block' : 'none'};">
+                                    <div class="block-form-row">
+                                        <label></label>
+                                        <div class="checkbox-wrapper">
+                                            <input type="checkbox" class="try-harder" id="try-harder-${blockId}" ${block.options?.tryHarder ? 'checked' : ''}>
+                                            <label for="try-harder-${blockId}" style="width: auto; margin-left: 5px;">Try Harder (slower, more accurate)</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                `;
+
+                blocksContainer.append(blockHTML);
+                const blockElement = $(`[data-block-id="${blockId}"]`);
+
+                // Decoder change handler
+                blockElement.find('.block-decoder').on('change', function() {
+                    const decoder = $(this).val();
+                    blockElement.find('.decoder-options > div').hide();
+                    blockElement.find(`.${decoder}-options`).show();
+                });
+
+                // Remove button handler
+                blockElement.find('.remove-block-btn').on('click', function() {
+                    blockElement.remove();
+                    updateBlockNumbers();
+                });
+
+                updateBlockNumbers();
+            }
+
+            function updateBlockNumbers() {
+                blocksContainer.find('.block-item').each(function(index) {
+                    $(this).find('.block-number').text(`Block ${index + 1}`);
+                });
+            }
+        },
+        oneditsave: function() {
+            const blocks = [];
+
+            $('#blocks-container .block-item').each(function() {
+                const blockElement = $(this);
+                const decoder = blockElement.find('.block-decoder').val();
+                const preprocessing = blockElement.find('.block-preprocessing').val();
+
+                const options = {};
+                if (decoder === 'zxing') {
+                    options.tryHarder = blockElement.find('.try-harder').is(':checked');
+                }
+
+                blocks.push({
+                    decoder: decoder,
+                    preprocessing: preprocessing,
+                    options: options
+                });
+            });
+
+            this.blocks = blocks;
+        },
+        oneditcancel: function() {
+            // Cleanup if needed
+        }
+    });
+</script>
+
+
+<script type="text/html" data-template-name="barcode-reader">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-inputValue"><i class="fa fa-sign-in"></i> Input</label>
+        <input type="text" id="node-input-inputValue" placeholder="msg.payload">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-outputValue"><i class="fa fa-sign-out"></i> Output</label>
+        <input type="text" id="node-input-outputValue" placeholder="msg.payload">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-executionMode"><i class="fa fa-cogs"></i> Execution Mode</label>
+        <select id="node-input-executionMode" style="width: 240px;">
+            <option value="parallel">Parallel (all blocks, merge results)</option>
+            <option value="sequential">Sequential (stop at first success)</option>
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label><i class="fa fa-cubes"></i> Decoder Blocks</label>
+        <div style="margin-left: 105px;">
+            <ol id="blocks-container"></ol>
+            <button type="button" id="add-block-btn" class="add-block-button">
+                <i class="fa fa-plus"></i> Add Block
+            </button>
+        </div>
+    </div>
+
+    <div class="form-row">
+        <div class="info-box">
+            <strong>ℹ️ How it works:</strong><br>
+            • Each block = decoder + preprocessing method<br>
+            • <strong>Parallel</strong>: All blocks run, results merged and deduplicated<br>
+            • <strong>Sequential</strong>: Blocks run in order (drag to reorder), stops at first success<br>
+            • Delete blocks you don't need<br><br>
+            <strong>💡 Tips:</strong><br>
+            • Maximum detection: Parallel with multiple preprocessing options<br>
+            • Best speed: Sequential with fastest preprocessing first
+        </div>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="barcode-reader">
+    <p>A multi-decoder barcode and QR code scanner supporting ZBar, ZXing, and Quagga2 libraries with flexible block-based configuration.</p>
+
+    <h3>Overview</h3>
+    <p>This node provides a flexible, block-based architecture for barcode detection. Each block combines a decoder library (ZBar, ZXing, or Quagga2) with preprocessing options, allowing you to optimize for either maximum detection rate or performance.</p>
+
+    <h3>Configuration</h3>
+    <dl class="message-properties">
+        <dt>Name <span class="property-type">string</span></dt>
+        <dd>Optional name for the node instance</dd>
+
+        <dt>Input/Output <span class="property-type">msg property</span></dt>
+        <dd>Message properties for input image and output results (default: <code>msg.payload</code>)</dd>
+
+        <dt>Execution Mode</dt>
+        <dd>
+            <strong>Parallel</strong>: Runs all blocks simultaneously and merges results<br>
+            <strong>Sequential</strong>: Processes blocks in order, stops at first detection
+        </dd>
+    </dl>
+
+    <h3>Decoder Blocks</h3>
+    <p>Each block represents a detection attempt with specific configuration:</p>
+
+    <h4>Decoder Options</h4>
+    <ul>
+        <li><strong>ZBar</strong>: Fast, reliable, good for standard barcodes and QR codes</li>
+        <li><strong>ZXing</strong>: Comprehensive format support, "Try Harder" option for difficult codes</li>
+        <li><strong>Quagga2</strong>: JavaScript-based, good for 1D barcodes</li>
+    </ul>
+
+    <h4>Preprocessing Options</h4>
+    <ul>
+        <li><strong>Original</strong>: Grayscale conversion only (fastest)</li>
+        <li><strong>Histogram Equalization</strong>: Enhances contrast, good for poor lighting</li>
+        <li><strong>Otsu Threshold</strong>: Binary image, best for low-contrast barcodes</li>
+    </ul>
+
+    <h3>Input Format</h3>
+    <p>Accepts images in multiple formats:</p>
+    <ul>
+        <li>Rosepetal bitmap format with colorSpace field</li>
+        <li>Raw bitmap with width, height, data, channels</li>
+        <li>JPEG/PNG buffers</li>
+        <li><strong>Arrays of images</strong>: Process multiple images, returns nested results</li>
+    </ul>
+
+    <h3>Output Format</h3>
+    <p>For single image input, returns array of detected barcodes:</p>
+    <pre>[{
+  format: "QR-Code",
+  value: "decoded_content",
+  box: {
+    center: { x: 0.5, y: 0.5 },      // Relative coordinates (0-1)
+    size: { width: 0.2, height: 0.2 },
+    angle: 15
+  },
+  corners: [                          // Relative coordinates
+    { x: 0.4, y: 0.4 },
+    { x: 0.6, y: 0.4 },
+    { x: 0.6, y: 0.6 },
+    { x: 0.4, y: 0.6 }
+  ],
+  detectedBy: {
+    blocks: [0, 1],
+    decoders: ["zbar", "zxing"],
+    preprocessing: ["original"]
+  }
+}]</pre>
+
+    <p>For array input, returns nested array: <code>[[img1_results], [img2_results]]</code></p>
+
+    <h3>Usage Strategies</h3>
+
+    <h4>Maximum Detection (Parallel Mode)</h4>
+    <ol>
+        <li>Add multiple blocks with different decoders</li>
+        <li>Use various preprocessing options per block</li>
+        <li>Set execution mode to Parallel</li>
+        <li>Trade performance for comprehensive detection</li>
+    </ol>
+
+    <h4>Optimized Performance (Sequential Mode)</h4>
+    <ol>
+        <li>Order blocks from fastest to slowest</li>
+        <li>Start with Original preprocessing</li>
+        <li>Add fallback blocks with stronger preprocessing</li>
+        <li>Set execution mode to Sequential</li>
+    </ol>
+
+    <h3>Examples</h3>
+
+    <p><strong>Example 1: Maximum detection</strong></p>
+    <ul>
+        <li>Block 1: ZBar + Original</li>
+        <li>Block 2: ZBar + Histogram</li>
+        <li>Block 3: ZXing + Original + Try Harder</li>
+        <li>Mode: Parallel</li>
+    </ul>
+
+    <p><strong>Example 2: Fast with fallback</strong></p>
+    <ul>
+        <li>Block 1: ZBar + Original (fastest)</li>
+        <li>Block 2: ZXing + Histogram (if first fails)</li>
+        <li>Block 3: ZXing + Otsu + Try Harder (last resort)</li>
+        <li>Mode: Sequential</li>
+    </ul>
+
+    <h3>Troubleshooting</h3>
+    <dl class="message-properties">
+        <dt>No detection</dt>
+        <dd>Add blocks with stronger preprocessing (Histogram, Otsu) or enable "Try Harder" for ZXing</dd>
+
+        <dt>Slow performance</dt>
+        <dd>Use Sequential mode or reduce the number of blocks</dd>
+
+        <dt>Duplicate results</dt>
+        <dd>This is normal in Parallel mode - duplicates are automatically deduplicated and tracked in "detectedBy"</dd>
+    </dl>
+</script>
+
+<style>
+    /* Container styling */
+    #blocks-container {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        min-height: 50px;
+    }
+
+    /* Material Design Card Styling */
+    #blocks-container .block-item {
+        background: white;
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 12px;
+        padding: 12px;
+        transition: box-shadow 0.2s ease, transform 0.2s ease;
+    }
+
+    #blocks-container .block-item:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    #blocks-container .block-item.ui-sortable-helper {
+        box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+        transform: scale(1.02);
+    }
+
+    /* Block Header */
+    #blocks-container .block-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 8px;
+        margin-bottom: 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    #blocks-container .block-header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    #blocks-container .drag-handle {
+        color: #999;
+        cursor: move;
+        font-size: 16px;
+        transition: color 0.2s ease;
+    }
+
+    #blocks-container .drag-handle:hover {
+        color: #5c9ded;
+    }
+
+    #blocks-container .block-number {
+        font-weight: 600;
+        font-size: 14px;
+        color: #333;
+    }
+
+    /* Remove Button */
+    #blocks-container .remove-block-btn {
+        background: #e74c3c;
+        color: white;
+        border: none;
+        padding: 4px 10px;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 12px;
+        transition: background 0.2s ease;
+    }
+
+    #blocks-container .remove-block-btn:hover {
+        background: #c0392b;
+    }
+
+    /* Block Configuration Area */
+    #blocks-container .block-config {
+        margin: 0;
+        padding: 0;
+    }
+
+    #blocks-container .block-form-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    #blocks-container .block-form-row:last-child {
+        margin-bottom: 0;
+    }
+
+    #blocks-container .block-form-row label {
+        width: 110px;
+        margin: 0;
+        font-size: 13px;
+        color: #666;
+        font-weight: 500;
+    }
+
+    #blocks-container .block-form-row select {
+        flex: 1;
+        max-width: 240px;
+        padding: 4px 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 13px;
+        background: white;
+        transition: border-color 0.2s ease;
+    }
+
+    #blocks-container .block-form-row select:focus {
+        outline: none;
+        border-color: #5c9ded;
+    }
+
+    #blocks-container .checkbox-wrapper {
+        display: flex;
+        align-items: center;
+    }
+
+    #blocks-container .checkbox-wrapper input[type="checkbox"] {
+        margin: 0;
+        cursor: pointer;
+    }
+
+    #blocks-container .checkbox-wrapper label {
+        width: auto !important;
+        margin-left: 5px;
+        font-size: 13px;
+        color: #666;
+        cursor: pointer;
+    }
+
+    /* Decoder Options */
+    #blocks-container .decoder-options {
+        margin-top: 4px;
+    }
+
+    /* Add Block Button */
+    .add-block-button {
+        background: #5cb85c;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        cursor: pointer;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        transition: background 0.2s ease, transform 0.1s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .add-block-button:hover {
+        background: #4cae4c;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+    }
+
+    .add-block-button:active {
+        transform: translateY(0);
+    }
+
+    /* Info Box */
+    .info-box {
+        padding: 12px;
+        background-color: #f0f8ff;
+        border: 1px solid #d0e7ff;
+        border-radius: 6px;
+        font-size: 12px;
+        color: #555;
+        line-height: 1.6;
+    }
+
+    .info-box strong {
+        color: #333;
+    }
+</style>
