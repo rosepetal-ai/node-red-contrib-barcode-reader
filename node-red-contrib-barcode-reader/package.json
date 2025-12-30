@@ -1,0 +1,39 @@
+{
+  "name": "node-red-contrib-barcode-reader",
+  "version": "0.1.0",
+  "description": "C++ powered barcode reader node for Node-RED.",
+  "scripts": {
+  },
+  "keywords": [
+    "node-red",
+    "barcode",
+    "zbar",
+    "zxing",
+    "quagga2",
+    "scanner"
+  ],
+  "author": {
+    "name": "Rosepetal"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader/issues"
+  },
+  "engines": {
+    "node": ">=14.0"
+  },
+  "node-red": {
+    "nodes": {
+      "barcode-reader": "barcode.js"
+    }
+  },
+  "dependencies": {
+    "rosepetal-barcode-engine": "file:../barcode-engine",
+    "@ericblade/quagga2": "1.12.1",
+    "jpeg-js": "^0.4.4"
+  }
+}

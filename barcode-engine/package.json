@@ -1,0 +1,19 @@
+{
+  "name": "rosepetal-barcode-engine",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "install": "node-gyp rebuild",
+    "build": "node-gyp build",
+    "configure": "node-gyp configure",
+    "rebuild": "node-gyp rebuild"
+  },
+  "gypfile": true,
+  "dependencies": {
+    "node-addon-api": "^8.5.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^11.2.0"
+  }
+}

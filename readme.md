@@ -71,7 +71,7 @@ bash INSTALL.sh
 The script will:
 1. Install ZBar, ZXing, and OpenCV libraries
 2. Build ZXing from source if package not available
-3. Compile the C++ native addon
+3. Build the C++ addon and install the Node-RED package dependencies
 
 ### Manual Installation (source build)
 
@@ -91,8 +91,16 @@ cmake -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_SHARED_LIBS=ON ..
 make -j$(nproc) && sudo make install
 
 # Build the addon
-cd node-red-contrib-barcode-reader
+cd /path/to/node-red-contrib-barcode-reader/barcode-engine
 npm install
+
+# Install the Node-RED package dependencies
+cd ../node-red-contrib-barcode-reader
+npm install
+
+# Optional: install into Node-RED
+cd ~/.node-red
+npm install /path/to/node-red-contrib-barcode-reader/node-red-contrib-barcode-reader
 ```
 
 ## Node-RED Configuration
@@ -336,7 +344,7 @@ const converted = barcode.convertToMat(anyInput);   // normalize input
 These errors only apply to source builds (when no prebuilt binary is available).
 
 **"Could not load the barcode native addon"**
-- If no prebuilt binary is available for your platform, install system deps and run `npm run rebuild`
+- If no prebuilt binary is available for your platform, install system deps and run `cd barcode-engine && npm run rebuild`
 
 **"Cannot find -lzbar"**
 ```bash
@@ -369,8 +377,8 @@ npm install -g node-gyp
 
 **"Module not found"**
 ```bash
-cd node-red-contrib-barcode-reader
-npm run build
+cd /path/to/node-red-contrib-barcode-reader/barcode-engine
+npm run rebuild
 ```
 
 **No barcodes detected**

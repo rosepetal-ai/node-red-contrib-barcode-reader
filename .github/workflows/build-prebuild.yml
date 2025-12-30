@@ -76,13 +76,14 @@ jobs:
           npm_config_zxing_include_dir: /home/runner/zxing-static/include
           npm_config_zxing_lib_dir: /home/runner/zxing-static/lib
         run: |
+          cd barcode-engine
           npm install
           npx node-gyp rebuild
 
       - name: Copy addon to package
         run: |
           mkdir -p npm/linux-x64/lib
-          cp build/Release/barcode.node npm/linux-x64/lib/addon.node
+          cp barcode-engine/build/Release/barcode.node npm/linux-x64/lib/addon.node
           cp LICENSE THIRD_PARTY_NOTICES npm/linux-x64/
 
       - name: Test addon loads
@@ -151,13 +152,14 @@ jobs:
           npm_config_zxing_include_dir: /home/runner/zxing-static/include
           npm_config_zxing_lib_dir: /home/runner/zxing-static/lib
         run: |
+          cd barcode-engine
           npm install
           npx node-gyp rebuild
 
       - name: Copy addon to package
         run: |
           mkdir -p npm/linux-arm64/lib
-          cp build/Release/barcode.node npm/linux-arm64/lib/addon.node
+          cp barcode-engine/build/Release/barcode.node npm/linux-arm64/lib/addon.node
           cp LICENSE THIRD_PARTY_NOTICES npm/linux-arm64/
 
       - name: Test addon loads
@@ -221,13 +223,14 @@ jobs:
           npm_config_zxing_include_dir: /root/zxing-static/include
           npm_config_zxing_lib_dir: /root/zxing-static/lib
         run: |
+          cd barcode-engine
           npm install
           npx node-gyp rebuild
 
       - name: Copy addon to package
         run: |
           mkdir -p npm/linuxmusl-x64/lib
-          cp build/Release/barcode.node npm/linuxmusl-x64/lib/addon.node
+          cp barcode-engine/build/Release/barcode.node npm/linuxmusl-x64/lib/addon.node
           cp LICENSE THIRD_PARTY_NOTICES npm/linuxmusl-x64/
 
       - name: Test addon loads

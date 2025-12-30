@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "==================================================="
 echo "  Installing rosepetal-barcode dependencies"
 echo "==================================================="
@@ -58,7 +60,7 @@ else
         # Install build dependencies
         $SUDO apt-get install -y build-essential cmake git
 
-        ORIGINAL_DIR=$(pwd)
+        ORIGINAL_DIR="$SCRIPT_DIR"
 
         # Build in temp directory
         TEMP_DIR=$(mktemp -d)
@@ -124,29 +126,10 @@ fi
 
 echo ""
 echo "--- Building C++ Addon ---"
-echo "Cleaning previous builds..."
-node-gyp clean || echo "No previous build to clean"
-
-# When installed from a local path, npm may hoist dependencies into the
-# caller's node_modules while the package itself is a symlink. Ensure
-# node-gyp can resolve node-addon-api in that case.
-if [ -n "$INIT_CWD" ] && [ -d "$INIT_CWD/node_modules" ]; then
-    export NODE_PATH="$INIT_CWD/node_modules${NODE_PATH:+:$NODE_PATH}"
-fi
-
-if ! node -e "require('node-addon-api')" >/dev/null 2>&1; then
-    echo "Error: node-addon-api not found. Run npm install in the caller project or install from a tarball."
-    exit 1
-fi
-
-echo "Configuring addon..."
-node-gyp configure || {
-    echo "Error: Failed to configure addon"
-    exit 1
-}
-
-echo "Building addon..."
-node-gyp build || {
+cd "$SCRIPT_DIR/barcode-engine"
+if npm install; then
+    echo "✓ C++ addon built successfully"
+else
     echo "Error: Failed to build addon"
     echo ""
     echo "Common issues:"
@@ -154,16 +137,36 @@ node-gyp build || {
     echo "  - Node-gyp not installed: npm install -g node-gyp"
     echo "  - Python not found: Install python3"
     exit 1
-}
+fi
 
-echo "✓ C++ addon built successfully"
+echo ""
+echo "--- Installing Node-RED package (local) ---"
+cd "$SCRIPT_DIR/node-red-contrib-barcode-reader"
+if npm install; then
+    echo "✓ Node-RED package installed successfully"
+else
+    echo "Error: Failed to install the Node-RED package"
+    exit 1
+fi
 
 echo ""
 echo "==================================================="
 echo "  ✓ All system dependencies installed!"
 echo "==================================================="
-echo ""
-echo "Next steps:"
-echo "  1. npm install (to get JavaScript dependencies like Quagga2)"
-echo "  2. npm test (to verify all decoders work)"
-echo ""
+
+# Optional: install into Node-RED
+NODE_RED_DIR="$HOME/.node-red"
+if [ -d "$NODE_RED_DIR" ]; then
+    echo ""
+    echo "--- Optional: install into your Node-RED instance ---"
+    read -p "Do you want to install this package into '$NODE_RED_DIR'? (y/N) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        (cd "$NODE_RED_DIR" && npm install "$SCRIPT_DIR/node-red-contrib-barcode-reader")
+        echo "✓ Installed in Node-RED. Restart Node-RED to load the new node."
+    else
+        echo "Skipping Node-RED installation."
+        echo "You can install later with:"
+        echo "  cd ~/.node-red && npm install $SCRIPT_DIR/node-red-contrib-barcode-reader"
+    fi
+fi

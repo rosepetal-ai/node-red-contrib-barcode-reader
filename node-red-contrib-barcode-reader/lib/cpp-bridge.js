@@ -86,10 +86,11 @@ function tryLoadFromPackage(platformId) {
 }
 
 function tryLoadFromLocalBuild() {
-  const root = path.resolve(__dirname, '..');
   const localPaths = [
-    path.join(root, 'build', 'Release', 'barcode.node'),
-    path.join(root, 'build', 'Release', 'addon.node')
+    path.join(__dirname, '../../barcode-engine/build/Release/barcode.node'),
+    path.join(__dirname, '../../barcode-engine/build/Release/addon.node'),
+    path.join(__dirname, '../../../barcode-engine/build/Release/barcode.node'),
+    path.join(__dirname, '../../../barcode-engine/build/Release/addon.node')
   ];
 
   for (const addonPath of localPaths) {
@@ -128,8 +129,20 @@ function canRunNodeGyp() {
 
 function tryBuildFromSource() {
   try {
-    const root = path.resolve(__dirname, '..');
-    if (!fs.existsSync(path.join(root, 'binding.gyp'))) {
+    const enginePaths = [
+      path.join(__dirname, '../../barcode-engine'),
+      path.join(__dirname, '../../../barcode-engine')
+    ];
+
+    let engineDir = null;
+    for (const p of enginePaths) {
+      if (fs.existsSync(path.join(p, 'binding.gyp'))) {
+        engineDir = p;
+        break;
+      }
+    }
+
+    if (!engineDir) {
       return null;
     }
 
@@ -137,14 +150,14 @@ function tryBuildFromSource() {
       return null;
     }
 
-    console.log('barcode: Prebuilt addon not found, attempting to build from source...');
-    execSync('node-gyp rebuild', {
-      cwd: root,
+    console.log('barcode-engine: Prebuilt addon not found, attempting to build from source...');
+    execSync('npm run rebuild', {
+      cwd: engineDir,
       stdio: 'inherit',
       timeout: 300000
     });
 
-    const addonPath = path.join(root, 'build', 'Release', 'barcode.node');
+    const addonPath = path.join(engineDir, 'build', 'Release', 'barcode.node');
     if (fs.existsSync(addonPath)) {
       return require(addonPath);
     }
@@ -189,7 +202,7 @@ function loadAddon() {
     '2. For unsupported platforms or development:\n' +
     '   - Install system deps: libzbar-dev, libzxing-dev, libopencv-dev\n' +
     '   - Install build tools: build-essential, python3, node-gyp\n' +
-    '   - Run: npm run rebuild\n'
+    '   - Run: cd barcode-engine && npm run rebuild\n'
   );
 }
 
