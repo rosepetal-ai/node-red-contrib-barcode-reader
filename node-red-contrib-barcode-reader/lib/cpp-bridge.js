@@ -206,4 +206,14 @@ function loadAddon() {
   );
 }
 
-module.exports = loadAddon();
+const util = require('util');
+const addon = loadAddon();
+const promisifiedAddon = {};
+
+for (const key in addon) {
+  if (typeof addon[key] === 'function') {
+    promisifiedAddon[key] = util.promisify(addon[key]);
+  }
+}
+
+module.exports = promisifiedAddon;

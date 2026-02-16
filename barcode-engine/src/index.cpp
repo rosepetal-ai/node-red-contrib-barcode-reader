@@ -2,6 +2,8 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <functional>
+#include <variant>
 #include <opencv2/opencv.hpp>
 #include "decoder.h"
 
@@ -296,180 +298,6 @@ cv::Mat InputToMat(const Napi::Value& input, std::string& errorMsg) {
   }
 }
 
-// ZBar decoder - expects grayscale image
-Napi::Value decoder_zbar(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-
-  if (info.Length() < 1) {
-    Napi::TypeError::New(env, "Expected at least 1 argument: grayscale image data (Buffer or raw image object)").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  // Validate input type before processing
-  if (!info[0].IsObject() && !info[0].IsBuffer()) {
-    Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  try {
-    std::string errorMsg;
-    cv::Mat mat = InputToMat(info[0], errorMsg);
-    if (mat.empty()) {
-      Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-    std::string result = decode_zbar(mat);
-    return Napi::String::New(env, result);
-  } catch (const std::exception& e) {
-    Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
-    return env.Null();
-  }
-}
-
-// ZXing decoder - expects grayscale image with tryHarder option
-Napi::Value decoder_zxing(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-
-  if (info.Length() < 2) {
-    Napi::TypeError::New(env, "Expected 2 arguments: grayscale image data, tryHarder (boolean)").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  // Validate input types
-  if (!info[0].IsObject() && !info[0].IsBuffer()) {
-    Napi::TypeError::New(env, "First argument must be a Buffer or image object").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-  if (!info[1].IsBoolean()) {
-    Napi::TypeError::New(env, "Second argument (tryHarder) must be a boolean").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  try {
-    std::string errorMsg;
-    cv::Mat mat = InputToMat(info[0], errorMsg);
-    if (mat.empty()) {
-      Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-
-    bool tryHarder = info[1].As<Napi::Boolean>().Value();
-    std::string result = decode_zxing(mat, tryHarder);
-    return Napi::String::New(env, result);
-  } catch (const std::exception& e) {
-    Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
-    return env.Null();
-  }
-}
-
-// Forward declaration
-Napi::Object MatToRawJS(Napi::Env env, const cv::Mat& m, const std::string& order);
-
-// Preprocessing: Original (BGR to Grayscale)
-Napi::Value preprocessOriginal(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-
-  if (info.Length() < 1) {
-    Napi::TypeError::New(env, "Expected 1 argument: image data (Buffer or raw image object)").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  if (!info[0].IsObject() && !info[0].IsBuffer()) {
-    Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  try {
-    std::string errorMsg;
-    cv::Mat mat = InputToMat(info[0], errorMsg);
-    if (mat.empty()) {
-      Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-
-    cv::Mat processed = preprocess_original(mat);
-    if (processed.empty()) {
-      Napi::Error::New(env, "Preprocessing failed").ThrowAsJavaScriptException();
-      return env.Null();
-    }
-
-    return MatToRawJS(env, processed, "GRAY");
-  } catch (const std::exception& e) {
-    Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
-    return env.Null();
-  }
-}
-
-// Preprocessing: Histogram Equalization
-Napi::Value preprocessHistogram(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-
-  if (info.Length() < 1) {
-    Napi::TypeError::New(env, "Expected 1 argument: image data (Buffer or raw image object)").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  if (!info[0].IsObject() && !info[0].IsBuffer()) {
-    Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  try {
-    std::string errorMsg;
-    cv::Mat mat = InputToMat(info[0], errorMsg);
-    if (mat.empty()) {
-      Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-
-    cv::Mat processed = preprocess_histogram(mat);
-    if (processed.empty()) {
-      Napi::Error::New(env, "Preprocessing failed").ThrowAsJavaScriptException();
-      return env.Null();
-    }
-
-    return MatToRawJS(env, processed, "GRAY");
-  } catch (const std::exception& e) {
-    Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
-    return env.Null();
-  }
-}
-
-// Preprocessing: Otsu Threshold
-Napi::Value preprocessOtsu(const Napi::CallbackInfo& info) {
-  Napi::Env env = info.Env();
-
-  if (info.Length() < 1) {
-    Napi::TypeError::New(env, "Expected 1 argument: image data (Buffer or raw image object)").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  if (!info[0].IsObject() && !info[0].IsBuffer()) {
-    Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
-    return env.Null();
-  }
-
-  try {
-    std::string errorMsg;
-    cv::Mat mat = InputToMat(info[0], errorMsg);
-    if (mat.empty()) {
-      Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-
-    cv::Mat processed = preprocess_otsu(mat);
-    if (processed.empty()) {
-      Napi::Error::New(env, "Preprocessing failed").ThrowAsJavaScriptException();
-      return env.Null();
-    }
-
-    return MatToRawJS(env, processed, "GRAY");
-  } catch (const std::exception& e) {
-    Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
-    return env.Null();
-  }
-}
-
 // Helper function to extract channel order from full channel string
 std::string ExtractChannelOrder(const std::string& chFull) {
   auto pos = chFull.find('_');
@@ -502,7 +330,7 @@ std::string GetColorSpaceFromInput(const Napi::Object& obj, const cv::Mat& mat) 
   if (obj.Has("colorSpace")) {
     return obj.Get("colorSpace").As<Napi::String>().Utf8Value();
   }
-    
+
   // Priority 3: Infer from channel count with sensible defaults
   switch (mat.channels()) {
     case 1:
@@ -516,61 +344,266 @@ std::string GetColorSpaceFromInput(const Napi::Object& obj, const cv::Mat& mat) 
   }
 }
 
-Napi::Value convertToMat(const Napi::CallbackInfo& info) {
+// --- Async worker infrastructure ---
+
+struct MatResult {
+    cv::Mat mat;
+    std::string colorSpace;
+};
+using WorkResult = std::variant<std::string, MatResult>;
+using WorkFn = std::function<WorkResult(const cv::Mat&)>;
+
+class GenericImageWorker : public Napi::AsyncWorker {
+public:
+    GenericImageWorker(Napi::Function& callback, cv::Mat inputMat, WorkFn workFn)
+        : Napi::AsyncWorker(callback),
+          inputMat_(std::move(inputMat)),
+          workFn_(std::move(workFn)) {}
+
+protected:
+    void Execute() override {
+        try {
+            result_ = workFn_(inputMat_);
+        } catch (const std::exception& e) {
+            SetError(e.what());
+        }
+    }
+
+    void OnOK() override {
+        Napi::Env env = Env();
+        Napi::Value jsResult;
+        if (std::holds_alternative<std::string>(result_)) {
+            jsResult = Napi::String::New(env, std::get<std::string>(result_));
+        } else {
+            const auto& mr = std::get<MatResult>(result_);
+            jsResult = MatToRawJS(env, mr.mat, mr.colorSpace);
+        }
+        Callback().Call({ env.Null(), jsResult });
+    }
+
+    void OnError(const Napi::Error& e) override {
+        Callback().Call({ e.Value(), Env().Null() });
+    }
+
+private:
+    cv::Mat inputMat_;
+    WorkFn workFn_;
+    WorkResult result_;
+};
+
+// --- Async function wrappers ---
+
+// ZBar decoder - async, expects grayscale image
+Napi::Value decoder_zbar(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-  if (info.Length() < 1) {
-    Napi::TypeError::New(env, "Expected 1 argument: image data (Buffer or raw image object)").ThrowAsJavaScriptException();
+  if (info.Length() < 2 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data (Buffer or raw image object), callback").ThrowAsJavaScriptException();
     return env.Null();
   }
 
-  // Validate input type before processing
+  if (!info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::TypeError::New(env, "First argument must be a Buffer or image object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [](const cv::Mat& m) -> WorkResult { return decode_zbar(m); });
+  worker->Queue();
+  return env.Undefined();
+}
+
+// ZXing decoder - async, expects grayscale image with tryHarder option
+Napi::Value decoder_zxing(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 3 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data, tryHarder (boolean), callback").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  if (!info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::TypeError::New(env, "First argument must be a Buffer or image object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  if (!info[1].IsBoolean()) {
+    Napi::TypeError::New(env, "Second argument (tryHarder) must be a boolean").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  bool tryHarder = info[1].As<Napi::Boolean>().Value();
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [tryHarder](const cv::Mat& m) -> WorkResult { return decode_zxing(m, tryHarder); });
+  worker->Queue();
+  return env.Undefined();
+}
+
+// Preprocessing: Original (BGR to Grayscale) - async
+Napi::Value preprocessOriginal(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 2 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data (Buffer or raw image object), callback").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
   if (!info[0].IsObject() && !info[0].IsBuffer()) {
     Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
     return env.Null();
   }
 
-  try {
-    std::string channelOrder = "BGR"; // Default for buffers (OpenCV decoded images)
-    std::string errorMsg;
-    
-    cv::Mat mat = InputToMat(info[0], errorMsg);
-    if (mat.empty()) {
-      Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-    
-    // Detect channel order from input if it's a raw object
-    if (info[0].IsObject() && !info[0].IsBuffer()) {
-      Napi::Object obj = info[0].As<Napi::Object>();
-      channelOrder = GetColorSpaceFromInput(obj, mat);
-    } else {
-      // For buffer inputs, use OpenCV's default channel ordering
-      if (mat.channels() == 1) {
-        channelOrder = "GRAY";
-      } else if (mat.channels() == 4) {
-        channelOrder = "BGRA";
-      } else {
-        channelOrder = "BGR"; // OpenCV default for 3-channel decoded images
-      }
-    }
-
-    return MatToRawJS(env, mat, channelOrder);
-  } catch (const std::exception& e) {
-    Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
     return env.Null();
   }
+
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [](const cv::Mat& m) -> WorkResult {
+          cv::Mat result = preprocess_original(m);
+          if (result.empty()) throw std::runtime_error("Preprocessing failed");
+          return MatResult{ std::move(result), "GRAY" };
+      });
+  worker->Queue();
+  return env.Undefined();
 }
 
+// Preprocessing: Histogram Equalization - async
+Napi::Value preprocessHistogram(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 2 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data (Buffer or raw image object), callback").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  if (!info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [](const cv::Mat& m) -> WorkResult {
+          cv::Mat result = preprocess_histogram(m);
+          if (result.empty()) throw std::runtime_error("Preprocessing failed");
+          return MatResult{ std::move(result), "GRAY" };
+      });
+  worker->Queue();
+  return env.Undefined();
+}
+
+// Preprocessing: Otsu Threshold - async
+Napi::Value preprocessOtsu(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 2 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data (Buffer or raw image object), callback").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  if (!info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [](const cv::Mat& m) -> WorkResult {
+          cv::Mat result = preprocess_otsu(m);
+          if (result.empty()) throw std::runtime_error("Preprocessing failed");
+          return MatResult{ std::move(result), "GRAY" };
+      });
+  worker->Queue();
+  return env.Undefined();
+}
+
+// convertToMat - async
+Napi::Value convertToMat(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 2 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data (Buffer or raw image object), callback").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  if (!info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::TypeError::New(env, "Argument must be a Buffer or image object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  // Extract channel order on main thread (accesses JS objects)
+  std::string channelOrder = "BGR";
+  if (info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::Object obj = info[0].As<Napi::Object>();
+    channelOrder = GetColorSpaceFromInput(obj, mat);
+  } else {
+    if (mat.channels() == 1) {
+      channelOrder = "GRAY";
+    } else if (mat.channels() == 4) {
+      channelOrder = "BGRA";
+    } else {
+      channelOrder = "BGR";
+    }
+  }
+
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [channelOrder](const cv::Mat& m) -> WorkResult {
+          return MatResult{ m.clone(), channelOrder };
+      });
+  worker->Queue();
+  return env.Undefined();
+}
+
+// resizeImage - async
 Napi::Value resizeImage(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-  if (info.Length() < 2) {
-    Napi::TypeError::New(env, "Expected 2 arguments: image data (Buffer or raw image object) and resize percentage").ThrowAsJavaScriptException();
+  if (info.Length() < 3 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data, resize percentage, callback").ThrowAsJavaScriptException();
     return env.Null();
   }
 
-  // Validate input types
   if (!info[0].IsObject() && !info[0].IsBuffer()) {
     Napi::TypeError::New(env, "First argument must be a Buffer or image object").ThrowAsJavaScriptException();
     return env.Null();
@@ -580,70 +613,47 @@ Napi::Value resizeImage(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
-  try {
-    // Convert input to cv::Mat
-    std::string errorMsg;
-    cv::Mat mat = InputToMat(info[0], errorMsg);
-    if (mat.empty()) {
-      Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
-      return env.Null();
-    }
-    
-    // Get resize percentage
-    double resizePercentage = info[1].As<Napi::Number>().DoubleValue();
-    
-    // Validate percentage range
-    if (resizePercentage <= 0 || resizePercentage > 100) {
-      Napi::Error::New(env, "Resize percentage must be between 0 and 100").ThrowAsJavaScriptException();
-      return env.Null();
-    }
-    
-    // If percentage is 100, return original image
-    if (resizePercentage >= 100.0) {
-      // Detect channel order from input if it's a raw object
-      std::string channelOrder = "BGR"; // Default for buffers
-      if (info[0].IsObject() && !info[0].IsBuffer()) {
-        Napi::Object obj = info[0].As<Napi::Object>();
-        channelOrder = GetColorSpaceFromInput(obj, mat);
-      } else {
-        // For buffer inputs, use OpenCV's default channel ordering
-        if (mat.channels() == 1) {
-          channelOrder = "GRAY";
-        } else if (mat.channels() == 4) {
-          channelOrder = "BGRA";
-        } else {
-          channelOrder = "BGR"; // OpenCV default for 3-channel decoded images
-        }
-      }
-      return MatToRawJS(env, mat, channelOrder);
-    }
-    
-    // Resize the image
-    cv::Mat resizedMat;
-    double scale = resizePercentage / 100.0;
-    cv::resize(mat, resizedMat, cv::Size(), scale, scale, cv::INTER_LINEAR);
-    
-    // Detect channel order from input to maintain consistency
-    std::string channelOrder = "BGR"; // Default for buffers
-    if (info[0].IsObject() && !info[0].IsBuffer()) {
-      Napi::Object obj = info[0].As<Napi::Object>();
-      channelOrder = GetColorSpaceFromInput(obj, mat);
-    } else {
-      // For buffer inputs, use OpenCV's default channel ordering
-      if (resizedMat.channels() == 1) {
-        channelOrder = "GRAY";
-      } else if (resizedMat.channels() == 4) {
-        channelOrder = "BGRA";
-      } else {
-        channelOrder = "BGR"; // OpenCV default for 3-channel decoded images
-      }
-    }
-    
-    return MatToRawJS(env, resizedMat, channelOrder);
-  } catch (const std::exception& e) {
-    Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
     return env.Null();
   }
+
+  double resizePercentage = info[1].As<Napi::Number>().DoubleValue();
+  if (resizePercentage <= 0 || resizePercentage > 100) {
+    Napi::Error::New(env, "Resize percentage must be between 0 and 100").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  // Extract channel order on main thread (accesses JS objects)
+  std::string channelOrder = "BGR";
+  if (info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::Object obj = info[0].As<Napi::Object>();
+    channelOrder = GetColorSpaceFromInput(obj, mat);
+  } else {
+    if (mat.channels() == 1) {
+      channelOrder = "GRAY";
+    } else if (mat.channels() == 4) {
+      channelOrder = "BGRA";
+    } else {
+      channelOrder = "BGR";
+    }
+  }
+
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [resizePercentage, channelOrder](const cv::Mat& m) -> WorkResult {
+          if (resizePercentage >= 100.0) {
+              return MatResult{ m.clone(), channelOrder };
+          }
+          cv::Mat resized;
+          double scale = resizePercentage / 100.0;
+          cv::resize(m, resized, cv::Size(), scale, scale, cv::INTER_LINEAR);
+          return MatResult{ std::move(resized), channelOrder };
+      });
+  worker->Queue();
+  return env.Undefined();
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {

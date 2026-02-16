@@ -75,7 +75,7 @@ module.exports = function(RED) {
          */
         async function processSingleImage(input, config, node) {
             // Get image dimensions for relative coordinate conversion
-            const imageDimensions = getImageDimensions(input);
+            const imageDimensions = await getImageDimensions(input);
 
             // Get blocks configuration
             const blocks = config.blocks || [];
@@ -149,17 +149,17 @@ module.exports = function(RED) {
          */
         async function processBlock(input, block, blockIndex, node, Quagga) {
             // Apply preprocessing
-            const preprocessed = applyPreprocessing(input, block.preprocessing);
+            const preprocessed = await applyPreprocessing(input, block.preprocessing);
 
             // Decode based on decoder type
             let rawResults;
 
             switch (block.decoder) {
                 case 'zbar':
-                    rawResults = decodeWithZBar(preprocessed, block);
+                    rawResults = await decodeWithZBar(preprocessed, block);
                     break;
                 case 'zxing':
-                    rawResults = decodeWithZXing(preprocessed, block);
+                    rawResults = await decodeWithZXing(preprocessed, block);
                     break;
                 case 'quagga2':
                     rawResults = await decodeWithQuagga(preprocessed, block, node, Quagga);
@@ -180,14 +180,14 @@ module.exports = function(RED) {
         /**
          * Apply preprocessing to image
          */
-        function applyPreprocessing(input, method) {
+        async function applyPreprocessing(input, method) {
             switch (method) {
                 case 'original':
-                    return barcode.preprocess_original(input);
+                    return await barcode.preprocess_original(input);
                 case 'histogram':
-                    return barcode.preprocess_histogram(input);
+                    return await barcode.preprocess_histogram(input);
                 case 'otsu':
-                    return barcode.preprocess_otsu(input);
+                    return await barcode.preprocess_otsu(input);
                 default:
                     throw new Error(`Unknown preprocessing method: ${method}`);
             }
@@ -196,8 +196,8 @@ module.exports = function(RED) {
         /**
          * Decode with ZBar
          */
-        function decodeWithZBar(preprocessed, block) {
-            const resultJson = barcode.decode_zbar(preprocessed);
+        async function decodeWithZBar(preprocessed, block) {
+            const resultJson = await barcode.decode_zbar(preprocessed);
             const parsed = JSON.parse(resultJson);
 
             if (parsed.error) {
@@ -210,9 +210,9 @@ module.exports = function(RED) {
         /**
          * Decode with ZXing
          */
-        function decodeWithZXing(preprocessed, block) {
+        async function decodeWithZXing(preprocessed, block) {
             const tryHarder = block.options?.tryHarder || false;
-            const resultJson = barcode.decode_zxing(preprocessed, tryHarder);
+            const resultJson = await barcode.decode_zxing(preprocessed, tryHarder);
             const parsed = JSON.parse(resultJson);
 
             if (parsed.error) {
@@ -385,14 +385,14 @@ module.exports = function(RED) {
         /**
          * Get image dimensions from input
          */
-        function getImageDimensions(input) {
+        async function getImageDimensions(input) {
             if (input.width && input.height) {
                 return { width: input.width, height: input.height };
             }
 
             // Fallback for buffer inputs (try to decode)
             try {
-                const converted = barcode.convertToMat(input);
+                const converted = await barcode.convertToMat(input);
                 return { width: converted.width, height: converted.height };
             } catch (err) {
                 throw new Error('Could not determine image dimensions');
