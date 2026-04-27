@@ -25,7 +25,7 @@ Part of the `@rosepetal/node-red-contrib-barcode-reader` package. The node appea
 
 The package is split into two components:
 
-- **`barcode-engine/`** -- Native C++ addon (Node-API) that wraps ZBar, ZXing, and OpenCV. As of v1.1.3, all decoding and preprocessing operations run on **async workers**, so the Node-RED event loop is never blocked.
+- **`barcode-engine/`** -- Native C++ addon (Node-API) that wraps ZBar, ZXing, and OpenCV. As of v1.2.1, all decoding and preprocessing operations run on **async workers**, so the Node-RED event loop is never blocked.
 - **`node-red-contrib-barcode-reader/`** -- Node-RED wrapper that provides the editor UI, block configuration, execution modes, and result merging/deduplication.
 
 Prebuilt binaries for `barcode-engine` are available for **linux-x64**, **linux-arm64**, and **linuxmusl-x64**. On other platforms the addon is compiled from source during `npm install`.
@@ -33,8 +33,9 @@ Prebuilt binaries for `barcode-engine` are available for **linux-x64**, **linux-
 ## Key Features
 
 - **Multi-decoder support**: ZBar, ZXing, and Quagga2
-- **Fully async processing**: Native addon uses C++ async workers -- the Node-RED event loop is never blocked (v1.1.3+)
+- **Fully async processing**: Native addon uses C++ async workers -- the Node-RED event loop is never blocked (v1.2.1+)
 - **Flexible preprocessing**: Original, Histogram Equalization, Otsu Threshold
+- **Per-block format filter**: restrict each block to specific symbologies (e.g. UPC-A only) for speed and to eliminate false positives
 - **Block-based configuration**: Combine decoders and preprocessing methods
 - **Execution modes**: Parallel (maximum detection) or Sequential (optimized performance)
 - **Batch processing**: Process single images or arrays of images
@@ -149,6 +150,15 @@ Each block represents a detection attempt with specific configuration. Blocks ca
 - Converts to binary (black/white) image
 - Best for low-contrast barcodes
 - Effective for faded or worn codes
+
+#### Format Filter (per block)
+
+Each block has a **Formats** allowlist. The list shown in the editor is filtered to formats the selected decoder actually supports — so you'll see different options when the block uses ZBar vs. ZXing vs. Quagga2.
+
+- **All formats** (default): the decoder is unrestricted; current behavior is preserved.
+- **Specific formats**: only the checked symbologies are decoded. Useful for reducing false positives in production lines that scan a single known format, and to avoid ZBar's UPC-A → EAN-13 leading-zero ambiguity (force `UPCA` to get 12-digit output).
+
+Selections persist across decoder changes when the new decoder still supports them — for example switching a block from ZBar to ZXing with `UPCA` checked keeps `UPCA` checked; switching to Quagga2 from ZXing with `Aztec` checked drops `Aztec` (Quagga2 is 1D-only).
 
 #### Decoder-Specific Options
 
@@ -356,22 +366,30 @@ msg.barcodes = [
 
 ### Decoder Format Support
 
-| Format | ZBar | ZXing | Quagga2 |
-|--------|------|-------|---------|
-| QR Code | Y | Y | - |
-| CODE-128 | Y | Y | Y |
-| CODE-39 | Y | Y | Y |
-| EAN-13 | Y | Y | Y |
-| EAN-8 | Y | Y | Y |
-| UPC-A | Y | Y | Y |
-| UPC-E | Y | Y | Y |
-| Data Matrix | Y | Y | - |
-| PDF417 | Y | Y | - |
-| CODABAR | Y | Y | Y |
+The canonical names match the values used in each block's **Formats** filter.
+
+| Canonical name | ZBar | ZXing | Quagga2 |
+|----------------|:----:|:-----:|:-------:|
+| `UPCA`         | Y    | Y     | Y       |
+| `UPCE`         | Y    | Y     | Y       |
+| `EAN13`        | Y    | Y     | Y       |
+| `EAN8`         | Y    | Y     | Y       |
+| `Code128`      | Y    | Y     | Y       |
+| `Code39`       | Y    | Y     | Y       |
+| `Code93`       | Y    | Y     | Y       |
+| `Codabar`      | Y    | Y     | Y       |
+| `ITF`          | Y    | Y     | Y       |
+| `QRCode`       | Y    | Y     | -       |
+| `PDF417`       | Y    | Y     | -       |
+| `DataMatrix`   | -    | Y     | -       |
+| `Aztec`        | -    | Y     | -       |
+| `DataBar`      | Y    | Y     | -       |
+
+Formats not supported by a decoder are omitted from the editor's checklist when that decoder is selected; if a Format is set programmatically that the decoder doesn't support, it is silently ignored.
 
 ## Performance Considerations
 
-### Async Processing (v1.1.3+)
+### Async Processing (v1.2.1+)
 
 All native decoding and preprocessing runs on C++ async workers. This means:
 - The Node-RED event loop is **never blocked** during barcode processing
@@ -442,29 +460,34 @@ When multiple blocks detect the same barcode:
 
 ## Programmatic API
 
-The `barcode-engine` addon can be used outside Node-RED:
+The `barcode-engine` addon can be used outside Node-RED. All native functions are async (callback-based) and are promisified by the package:
 
 ```javascript
 const barcode = require('@rosepetal/node-red-contrib-barcode-reader');
 
-// Preprocessing (returns grayscale cv::Mat as Rosepetal bitmap)
-const gray = barcode.preprocess_original(inputMat);
-const enhanced = barcode.preprocess_histogram(inputMat);
-const binary = barcode.preprocess_otsu(inputMat);
+// Preprocessing (returns grayscale image as Rosepetal bitmap)
+const gray     = await barcode.preprocess_original(inputMat);
+const enhanced = await barcode.preprocess_histogram(inputMat);
+const binary   = await barcode.preprocess_otsu(inputMat);
 
 // Decoders (require grayscale input, return JSON string)
-const zbarResult = barcode.decode_zbar(gray);
-const zxingResult = barcode.decode_zxing(gray, false);      // normal
-const zxingHard = barcode.decode_zxing(enhanced, true);     // tryHarder
+// Signature: decode_zbar(image, formats)
+const zbarAll  = await barcode.decode_zbar(gray, []);                 // all symbologies
+const zbarUpc  = await barcode.decode_zbar(gray, ['UPCA']);           // UPC-A only
+
+// Signature: decode_zxing(image, tryHarder, formats)
+const zxAll    = await barcode.decode_zxing(gray, false, []);          // all formats
+const zxQrOnly = await barcode.decode_zxing(gray, true,  ['QRCode']);  // QR + tryHarder
 
 // Parse results
-const barcodes = JSON.parse(zbarResult);
-console.log(barcodes.results);
+const { results } = JSON.parse(zbarUpc);
 
 // Utilities
-const resized = barcode.resizeImage(inputMat, 50);  // 50% size
-const converted = barcode.convertToMat(anyInput);   // normalize input
+const resized   = await barcode.resizeImage(inputMat, 50);   // 50% size
+const converted = await barcode.convertToMat(anyInput);      // normalize input
 ```
+
+**`formats` argument**: an array of canonical format names (see the [Decoder Format Support](#decoder-format-support) table). Pass `[]` to leave the decoder unrestricted. Unsupported names for a given decoder are silently ignored.
 
 ### Decoder Result Format
 
@@ -565,6 +588,12 @@ npm install -g node-gyp
 3. Enable "Try Harder" on ZXing
 4. Verify expected barcode format
 
+### UPC-A read as EAN-13 with leading 0
+
+ZBar treats UPC-A as a subset of EAN-13. When unrestricted, it may emit a 12-digit UPC-A code as a 13-digit EAN-13 with a leading `0`.
+
+**Solution:** add `UPCA` to the block's **Formats** list. ZBar will then label and output the code as `UPC-A` (12 digits). If you need both, enable both `UPCA` and `EAN13`.
+
 ### Missing Quagga2 Warning
 
 **Message**: `Quagga2 not available. Install @ericblade/quagga2 to use Quagga decoder.`
@@ -612,12 +641,14 @@ You can modify block configuration programmatically before the node:
 // In a function node before the barcode reader
 msg.barcodeConfig = {
   blocks: [
-    { decoder: "zbar", preprocessing: "original", options: {} },
-    { decoder: "zxing", preprocessing: "histogram", options: { tryHarder: true }}
+    { decoder: "zbar",  preprocessing: "original",  options: { formats: ["UPCA"] } },
+    { decoder: "zxing", preprocessing: "histogram", options: { formats: ["QRCode"], tryHarder: true } }
   ],
   executionMode: "sequential"
 };
 ```
+
+`options.formats` is an array of canonical format names (see [Decoder Format Support](#decoder-format-support)). Use `[]` or omit the key for "all formats".
 
 ### Region of Interest Processing
 

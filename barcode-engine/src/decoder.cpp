@@ -9,6 +9,8 @@ https://www.learnopencv.com/barcode-and-qr-code-scanner-using-zbar-and-opencv/
 #include <set>
 #include <zbar.h>
 #include <ZXing/ReadBarcode.h>
+#include <ZXing/ReaderOptions.h>
+#include <ZXing/BarcodeFormat.h>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -17,6 +19,47 @@ https://www.learnopencv.com/barcode-and-qr-code-scanner-using-zbar-and-opencv/
 using namespace std;
 using namespace cv;
 using namespace zbar;
+
+// Canonical format name → ZBar symbology
+static const std::map<std::string, zbar_symbol_type_t>& zbarFormatMap() {
+  static const std::map<std::string, zbar_symbol_type_t> m = {
+    {"UPCA",       ZBAR_UPCA},
+    {"UPCE",       ZBAR_UPCE},
+    {"EAN13",      ZBAR_EAN13},
+    {"EAN8",       ZBAR_EAN8},
+    {"Code128",    ZBAR_CODE128},
+    {"Code39",     ZBAR_CODE39},
+    {"Code93",     ZBAR_CODE93},
+    {"Codabar",    ZBAR_CODABAR},
+    {"ITF",        ZBAR_I25},
+    {"QRCode",     ZBAR_QRCODE},
+    {"PDF417",     ZBAR_PDF417},
+    {"DataBar",    ZBAR_DATABAR}
+  };
+  return m;
+}
+
+// Canonical format name → ZXing BarcodeFormat
+static const std::map<std::string, ZXing::BarcodeFormat>& zxingFormatMap() {
+  static const std::map<std::string, ZXing::BarcodeFormat> m = {
+    {"UPCA",        ZXing::BarcodeFormat::UPCA},
+    {"UPCE",        ZXing::BarcodeFormat::UPCE},
+    {"EAN13",       ZXing::BarcodeFormat::EAN13},
+    {"EAN8",        ZXing::BarcodeFormat::EAN8},
+    {"Code128",     ZXing::BarcodeFormat::Code128},
+    {"Code39",      ZXing::BarcodeFormat::Code39},
+    {"Code93",      ZXing::BarcodeFormat::Code93},
+    {"Codabar",     ZXing::BarcodeFormat::Codabar},
+    {"ITF",         ZXing::BarcodeFormat::ITF},
+    {"QRCode",      ZXing::BarcodeFormat::QRCode},
+    {"PDF417",      ZXing::BarcodeFormat::PDF417},
+    {"DataMatrix",  ZXing::BarcodeFormat::DataMatrix},
+    {"Aztec",       ZXing::BarcodeFormat::Aztec},
+    {"DataBar",     ZXing::BarcodeFormat::DataBar}
+  };
+  return m;
+}
+
 
 typedef struct
 {
@@ -35,7 +78,8 @@ typedef struct
 } decodedObject;
 
 // Simple ZBar decoder - takes grayscale image only
-string decode_zbar(const cv::Mat& grayscale)
+string decode_zbar(const cv::Mat& grayscale,
+                   const std::vector<std::string>& formats)
 {
   // Ensure we have a valid grayscale image
   if (grayscale.empty()) {
@@ -53,8 +97,23 @@ string decode_zbar(const cv::Mat& grayscale)
   // Create zbar scanner
   ImageScanner scanner;
 
-  // Configure scanner
-  scanner.set_config(ZBAR_QRCODE, ZBAR_CFG_ENABLE, 1);
+  if (formats.empty()) {
+    // Default behavior: rely on ZBar defaults but explicitly enable
+    // UPC-A so codes are reported as UPC-A (12 digits) rather than
+    // EAN-13 with a leading 0.
+    scanner.set_config(ZBAR_QRCODE, ZBAR_CFG_ENABLE, 1);
+    scanner.set_config(ZBAR_UPCA,   ZBAR_CFG_ENABLE, 1);
+  } else {
+    // Allowlist mode: disable everything, then enable mapped symbologies
+    scanner.set_config(static_cast<zbar_symbol_type_t>(0), ZBAR_CFG_ENABLE, 0);
+    const auto& fmtMap = zbarFormatMap();
+    for (const auto& name : formats) {
+      auto it = fmtMap.find(name);
+      if (it != fmtMap.end()) {
+        scanner.set_config(it->second, ZBAR_CFG_ENABLE, 1);
+      }
+    }
+  }
 
   // Wrap image data in a zbar image
   Image image(grayscale.cols, grayscale.rows, "Y800", (uchar *)grayscale.data, grayscale.cols * grayscale.rows);
@@ -108,7 +167,9 @@ string decode_zbar(const cv::Mat& grayscale)
 }
 
 // Simple ZXing decoder - takes grayscale image only
-string decode_zxing(const cv::Mat& grayscale, bool tryHarder)
+string decode_zxing(const cv::Mat& grayscale,
+                    bool tryHarder,
+                    const std::vector<std::string>& formats)
 {
   // Ensure we have a valid grayscale image
   if (grayscale.empty()) {
@@ -121,9 +182,21 @@ string decode_zxing(const cv::Mat& grayscale, bool tryHarder)
   }
 
   // Configure ZXing options
-  ZXing::DecodeHints hints;
+  ZXing::ReaderOptions hints;
   hints.setTryHarder(tryHarder);
   hints.setTryRotate(tryHarder);
+
+  if (!formats.empty()) {
+    ZXing::BarcodeFormats wanted = ZXing::BarcodeFormat::None;
+    const auto& fmtMap = zxingFormatMap();
+    for (const auto& name : formats) {
+      auto it = fmtMap.find(name);
+      if (it != fmtMap.end()) {
+        wanted |= it->second;
+      }
+    }
+    hints.setFormats(wanted);
+  }
 
   // Create ImageView from cv::Mat
   ZXing::ImageView imageView(grayscale.data, grayscale.cols, grayscale.rows, ZXing::ImageFormat::Lum);

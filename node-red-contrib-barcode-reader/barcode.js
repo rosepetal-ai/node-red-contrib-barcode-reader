@@ -1,3 +1,19 @@
+// Canonical format name → Quagga2 reader name (Quagga2 is 1D-focused)
+const QUAGGA_FORMAT_MAP = {
+    UPCA:    'upc_reader',
+    UPCE:    'upc_e_reader',
+    EAN13:   'ean_reader',
+    EAN8:    'ean_8_reader',
+    Code128: 'code_128_reader',
+    Code39:  'code_39_reader',
+    Code93:  'code_93_reader',
+    Codabar: 'codabar_reader',
+    ITF:     'i2of5_reader'
+};
+
+// Default = every reader Quagga2 supports (used when a block has no Formats filter)
+const QUAGGA_DEFAULT_READERS = Object.values(QUAGGA_FORMAT_MAP);
+
 module.exports = function(RED) {
     function BarcodeReaderNode(config) {
         RED.nodes.createNode(this, config);
@@ -197,7 +213,8 @@ module.exports = function(RED) {
          * Decode with ZBar
          */
         async function decodeWithZBar(preprocessed, block) {
-            const resultJson = await barcode.decode_zbar(preprocessed);
+            const formats = block.options?.formats || [];
+            const resultJson = await barcode.decode_zbar(preprocessed, formats);
             const parsed = JSON.parse(resultJson);
 
             if (parsed.error) {
@@ -212,7 +229,9 @@ module.exports = function(RED) {
          */
         async function decodeWithZXing(preprocessed, block) {
             const tryHarder = block.options?.tryHarder || false;
-            const resultJson = await barcode.decode_zxing(preprocessed, tryHarder);
+            const formats = block.options?.formats || [];
+            const resultJson = await barcode.decode_zxing(
+                preprocessed, tryHarder, formats);
             const parsed = JSON.parse(resultJson);
 
             if (parsed.error) {
@@ -256,20 +275,26 @@ module.exports = function(RED) {
                     const base64 = jpegData.data.toString('base64');
                     const dataUri = `data:image/jpeg;base64,${base64}`;
 
-                    Quagga.decodeSingle({
-                        src: dataUri,  // Now using proper data URI format
-                        numOfWorkers: 0,
-                        decoder: {
-                            readers: [
-                                "code_128_reader",   // CODE 128 (logistics, shipping)
-                                "ean_reader",        // EAN-13 (retail products)
-                                "ean_8_reader",      // EAN-8 (small items)
-                                "upc_reader",        // UPC-A (North America retail)
-                                "upc_e_reader",      // UPC-E (small packages)
-                                "code_39_reader",    // CODE 39 (automotive, DoD)
-                                "codabar_reader"     // CODABAR (libraries, blood banks)
-                            ]
+                    // Build readers list from canonical formats; fall back to default set
+                    const formats = block.options?.formats || [];
+                    let readers;
+                    if (formats.length > 0) {
+                        readers = formats
+                            .map(f => QUAGGA_FORMAT_MAP[f])
+                            .filter(Boolean);
+                        // If user picked only formats Quagga2 can't read, skip the call
+                        if (readers.length === 0) {
+                            resolve([]);
+                            return;
                         }
+                    } else {
+                        readers = QUAGGA_DEFAULT_READERS;
+                    }
+
+                    Quagga.decodeSingle({
+                        src: dataUri,
+                        numOfWorkers: 0,
+                        decoder: { readers: readers }
                     }, (result) => {
                         if (result && result.codeResult) {
                             const boxes = result.boxes || [];

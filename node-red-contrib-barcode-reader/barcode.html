@@ -31,6 +31,25 @@
                 types: ['msg']
             });
 
+            // Per-decoder supported formats (canonical names)
+            const FORMATS_BY_DECODER = {
+                zbar: [
+                    'UPCA', 'UPCE', 'EAN13', 'EAN8',
+                    'Code128', 'Code39', 'Code93', 'Codabar',
+                    'ITF', 'QRCode', 'PDF417', 'DataBar'
+                ],
+                zxing: [
+                    'UPCA', 'UPCE', 'EAN13', 'EAN8',
+                    'Code128', 'Code39', 'Code93', 'Codabar',
+                    'ITF', 'QRCode', 'PDF417',
+                    'DataMatrix', 'Aztec', 'DataBar'
+                ],
+                quagga2: [
+                    'UPCA', 'UPCE', 'EAN13', 'EAN8',
+                    'Code128', 'Code39', 'Code93', 'Codabar', 'ITF'
+                ]
+            };
+
             // Initialize blocks
             const blocksContainer = $('#blocks-container');
             const blocks = node.blocks || [];
@@ -60,8 +79,24 @@
                 }
             });
 
+            // Render the formats grid for a given decoder, preserving any
+            // currently-checked formats that are still supported by the new decoder.
+            function renderFormatsGrid(blockElement, decoder, preselected) {
+                const supported = FORMATS_BY_DECODER[decoder] || [];
+                const checkboxes = supported.map(f => `
+                    <label class="format-checkbox">
+                        <input type="checkbox" class="format-cb" value="${f}"
+                            ${preselected.has(f) ? 'checked' : ''}>
+                        <span>${f}</span>
+                    </label>
+                `).join('');
+                blockElement.find('.formats-grid').html(checkboxes);
+            }
+
             function addBlockUI(block, index) {
                 const blockId = `block-${Date.now()}-${index}`;
+                const initialSelected = new Set(block.options?.formats || []);
+                const formatsAll = initialSelected.size === 0;
 
                 const blockHTML = `
                     <li class="block-item" data-block-id="${blockId}">
@@ -93,6 +128,20 @@
                                 </select>
                             </div>
 
+                            <div class="block-form-row formats-row">
+                                <label>Formats</label>
+                                <div class="formats-controls">
+                                    <div class="formats-toolbar">
+                                        <label class="format-checkbox all-formats-wrapper">
+                                            <input type="checkbox" class="all-formats-cb" ${formatsAll ? 'checked' : ''}>
+                                            <span>All formats</span>
+                                        </label>
+                                        <span class="formats-hint">List shows only formats supported by the selected decoder</span>
+                                    </div>
+                                    <div class="formats-grid" style="display: ${formatsAll ? 'none' : 'grid'};"></div>
+                                </div>
+                            </div>
+
                             <div class="decoder-options">
                                 <!-- ZXing options -->
                                 <div class="zxing-options" style="display: ${block.decoder === 'zxing' ? 'block' : 'none'};">
@@ -112,11 +161,37 @@
                 blocksContainer.append(blockHTML);
                 const blockElement = $(`[data-block-id="${blockId}"]`);
 
-                // Decoder change handler
+                // Initial formats grid for this block's decoder
+                renderFormatsGrid(blockElement, block.decoder || 'zbar', initialSelected);
+
+                // Decoder change handler — re-render formats grid keeping still-supported selections
                 blockElement.find('.block-decoder').on('change', function() {
                     const decoder = $(this).val();
                     blockElement.find('.decoder-options > div').hide();
                     blockElement.find(`.${decoder}-options`).show();
+
+                    const currentlyChecked = new Set();
+                    blockElement.find('.format-cb:checked').each(function() {
+                        currentlyChecked.add($(this).val());
+                    });
+                    renderFormatsGrid(blockElement, decoder, currentlyChecked);
+                });
+
+                // "All formats" toggles the grid; checking it unchecks individual formats
+                blockElement.find('.all-formats-cb').on('change', function() {
+                    const checked = $(this).is(':checked');
+                    blockElement.find('.formats-grid').toggle(!checked);
+                    if (checked) {
+                        blockElement.find('.format-cb').prop('checked', false);
+                    }
+                });
+
+                // Picking any individual format implies "All formats" is off
+                blockElement.on('change', '.format-cb', function() {
+                    if ($(this).is(':checked')) {
+                        blockElement.find('.all-formats-cb').prop('checked', false);
+                        blockElement.find('.formats-grid').show();
+                    }
                 });
 
                 // Remove button handler
@@ -143,6 +218,19 @@
                 const preprocessing = blockElement.find('.block-preprocessing').val();
 
                 const options = {};
+
+                // Formats: empty array = "all formats" (handled by C++/JS defaults)
+                const allFormats = blockElement.find('.all-formats-cb').is(':checked');
+                if (!allFormats) {
+                    const selected = [];
+                    blockElement.find('.format-cb:checked').each(function() {
+                        selected.push($(this).val());
+                    });
+                    options.formats = selected;
+                } else {
+                    options.formats = [];
+                }
+
                 if (decoder === 'zxing') {
                     options.tryHarder = blockElement.find('.try-harder').is(':checked');
                 }
@@ -200,13 +288,14 @@
     <div class="form-row">
         <div class="info-box">
             <strong>ℹ️ How it works:</strong><br>
-            • Each block = decoder + preprocessing method<br>
+            • Each block = decoder + preprocessing method + optional format filter<br>
             • <strong>Parallel</strong>: All blocks run, results merged and deduplicated<br>
             • <strong>Sequential</strong>: Blocks run in order (drag to reorder), stops at first success<br>
             • Delete blocks you don't need<br><br>
             <strong>💡 Tips:</strong><br>
             • Maximum detection: Parallel with multiple preprocessing options<br>
-            • Best speed: Sequential with fastest preprocessing first
+            • Best speed: Sequential with fastest preprocessing first<br>
+            • Reduce false positives: pick only the formats you actually expect (e.g. just UPCA for retail labels)
         </div>
     </div>
 </script>
@@ -240,6 +329,12 @@
         <li><strong>ZBar</strong>: Fast, reliable, good for standard barcodes and QR codes</li>
         <li><strong>ZXing</strong>: Comprehensive format support, "Try Harder" option for difficult codes</li>
         <li><strong>Quagga2</strong>: JavaScript-based, good for 1D barcodes</li>
+    </ul>
+
+    <h4>Per-block Options</h4>
+    <ul>
+        <li><strong>Formats</strong>: allowlist of barcode symbologies. "All formats" leaves the decoder unrestricted (default). The list shown is filtered to formats the selected decoder actually supports — ZBar covers most 1D + QR/PDF417, ZXing adds DataMatrix and Aztec, Quagga2 is 1D-only.</li>
+        <li><strong>Try Harder</strong> (ZXing): more thorough scan, slower, finds difficult codes.</li>
     </ul>
 
     <h4>Preprocessing Options</h4>
@@ -319,13 +414,23 @@
         <li>Mode: Sequential</li>
     </ul>
 
+    <p><strong>Example 3: Production line, single known format</strong></p>
+    <ul>
+        <li>Block 1: ZBar + Original, Formats: <code>UPCA</code> only</li>
+        <li>Mode: Parallel (single block)</li>
+        <li>Result: avoids false positives from labels/text and forces 12-digit UPC-A output (no EAN-13 leading-zero ambiguity).</li>
+    </ul>
+
     <h3>Troubleshooting</h3>
     <dl class="message-properties">
         <dt>No detection</dt>
-        <dd>Add blocks with stronger preprocessing (Histogram, Otsu) or enable "Try Harder" for ZXing</dd>
+        <dd>Add blocks with stronger preprocessing (Histogram, Otsu) or enable "Try Harder" for ZXing. If Formats is restricted, double-check the actual symbology of your barcode.</dd>
+
+        <dt>UPC-A read as EAN-13 with leading 0</dt>
+        <dd>Add <code>UPCA</code> to the Formats list (or enable both <code>UPCA</code> and <code>EAN13</code>). When neither is restricted, ZBar may emit UPC-A codes as EAN-13 with a leading 0.</dd>
 
         <dt>Slow performance</dt>
-        <dd>Use Sequential mode or reduce the number of blocks</dd>
+        <dd>Use Sequential mode or reduce the number of blocks. Restricting Formats also gives a small speedup, especially with ZXing + Try Harder.</dd>
 
         <dt>Duplicate results</dt>
         <dd>This is normal in Parallel mode - duplicates are automatically deduplicated and tracked in "detectedBy"</dd>
@@ -471,6 +576,61 @@
     /* Decoder Options */
     #blocks-container .decoder-options {
         margin-top: 4px;
+    }
+
+    /* Formats grid */
+    #blocks-container .formats-row {
+        align-items: flex-start;
+    }
+
+    #blocks-container .formats-controls {
+        flex: 1;
+        max-width: 360px;
+    }
+
+    #blocks-container .formats-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+    }
+
+    #blocks-container .formats-hint {
+        font-size: 11px;
+        color: #888;
+        font-style: italic;
+    }
+
+    #blocks-container .formats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 4px 12px;
+        padding: 6px 8px;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        background: #fafafa;
+    }
+
+    #blocks-container .format-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin: 0;
+        font-size: 12px;
+        font-weight: normal;
+        color: #444;
+        cursor: pointer;
+        width: auto;
+    }
+
+    #blocks-container .format-checkbox input[type="checkbox"] {
+        margin: 0;
+        cursor: pointer;
+    }
+
+    #blocks-container .all-formats-wrapper {
+        font-weight: 500;
+        color: #333;
     }
 
     /* Add Block Button */

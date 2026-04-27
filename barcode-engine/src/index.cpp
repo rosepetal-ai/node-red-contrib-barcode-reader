@@ -393,17 +393,35 @@ private:
 
 // --- Async function wrappers ---
 
-// ZBar decoder - async, expects grayscale image
+// Helper: convert a Napi::Array of strings into std::vector<std::string>
+static std::vector<std::string> ArrayToStringVector(const Napi::Array& arr) {
+  std::vector<std::string> out;
+  uint32_t len = arr.Length();
+  out.reserve(len);
+  for (uint32_t i = 0; i < len; ++i) {
+    Napi::Value v = arr.Get(i);
+    if (v.IsString()) {
+      out.push_back(v.As<Napi::String>().Utf8Value());
+    }
+  }
+  return out;
+}
+
+// ZBar decoder - async, expects grayscale image with optional formats allowlist
 Napi::Value decoder_zbar(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-  if (info.Length() < 2 || !info[info.Length() - 1].IsFunction()) {
-    Napi::TypeError::New(env, "Expected arguments: image data (Buffer or raw image object), callback").ThrowAsJavaScriptException();
+  if (info.Length() < 3 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data, formats (string[]), callback").ThrowAsJavaScriptException();
     return env.Null();
   }
 
   if (!info[0].IsObject() && !info[0].IsBuffer()) {
     Napi::TypeError::New(env, "First argument must be a Buffer or image object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  if (!info[1].IsArray()) {
+    Napi::TypeError::New(env, "Second argument (formats) must be an array of strings").ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -414,19 +432,21 @@ Napi::Value decoder_zbar(const Napi::CallbackInfo& info) {
     return env.Null();
   }
 
+  std::vector<std::string> formats = ArrayToStringVector(info[1].As<Napi::Array>());
+
   Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
   auto* worker = new GenericImageWorker(cb, std::move(mat),
-      [](const cv::Mat& m) -> WorkResult { return decode_zbar(m); });
+      [formats](const cv::Mat& m) -> WorkResult { return decode_zbar(m, formats); });
   worker->Queue();
   return env.Undefined();
 }
 
-// ZXing decoder - async, expects grayscale image with tryHarder option
+// ZXing decoder - async, expects grayscale image with tryHarder + formats
 Napi::Value decoder_zxing(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-  if (info.Length() < 3 || !info[info.Length() - 1].IsFunction()) {
-    Napi::TypeError::New(env, "Expected arguments: image data, tryHarder (boolean), callback").ThrowAsJavaScriptException();
+  if (info.Length() < 4 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data, tryHarder (bool), formats (string[]), callback").ThrowAsJavaScriptException();
     return env.Null();
   }
 
@@ -438,6 +458,10 @@ Napi::Value decoder_zxing(const Napi::CallbackInfo& info) {
     Napi::TypeError::New(env, "Second argument (tryHarder) must be a boolean").ThrowAsJavaScriptException();
     return env.Null();
   }
+  if (!info[2].IsArray()) {
+    Napi::TypeError::New(env, "Third argument (formats) must be an array of strings").ThrowAsJavaScriptException();
+    return env.Null();
+  }
 
   std::string errorMsg;
   cv::Mat mat = InputToMat(info[0], errorMsg);
@@ -447,9 +471,13 @@ Napi::Value decoder_zxing(const Napi::CallbackInfo& info) {
   }
 
   bool tryHarder = info[1].As<Napi::Boolean>().Value();
+  std::vector<std::string> formats = ArrayToStringVector(info[2].As<Napi::Array>());
+
   Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
   auto* worker = new GenericImageWorker(cb, std::move(mat),
-      [tryHarder](const cv::Mat& m) -> WorkResult { return decode_zxing(m, tryHarder); });
+      [tryHarder, formats](const cv::Mat& m) -> WorkResult {
+        return decode_zxing(m, tryHarder, formats);
+      });
   worker->Queue();
   return env.Undefined();
 }
