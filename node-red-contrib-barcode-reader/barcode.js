@@ -112,11 +112,14 @@ module.exports = function(RED) {
                 allResults = await processParallel(input, blocks, node, Quagga);
             }
 
-            // Deduplicate results
+            // Deduplicate by barcode value
             const dedupResults = deduplicateResults(allResults);
 
+            // Drop spatial ghost reads
+            const filteredResults = deduplicateSpatial(dedupResults);
+
             // Convert to relative coordinates and final format
-            const finalResults = dedupResults.map(result =>
+            const finalResults = filteredResults.map(result =>
                 convertToFinalFormat(result, imageDimensions)
             );
 
@@ -362,6 +365,71 @@ module.exports = function(RED) {
             }
 
             return Array.from(map.values());
+        }
+
+        function deduplicateSpatial(results) {
+            const sorted = [...results].sort(
+                (a, b) => (b.detectedBy?.length || 1) - (a.detectedBy?.length || 1));
+
+            const kept = [];
+            for (const r of sorted) {
+                const conflictIdx = kept.findIndex(k => isSpatialDuplicate(r, k));
+                if (conflictIdx === -1) {
+                    kept.push(r);
+                    continue;
+                }
+                if (isMoreConfident(r, kept[conflictIdx])) {
+                    kept[conflictIdx] = r;
+                }
+            }
+            return kept;
+        }
+
+        function isMoreConfident(a, b) {
+            const aCount = a.detectedBy?.length || 1;
+            const bCount = b.detectedBy?.length || 1;
+            if (aCount !== bCount) return aCount > bCount;
+            // Same agreement count: quality is only comparable within one decoder
+            if (sameDecoderSet(a, b)) {
+                return (a.quality || 0) > (b.quality || 0);
+            }
+            return false;
+        }
+
+        function sameDecoderSet(a, b) {
+            const decoders = r => new Set(
+                (r.detectedBy || []).map(s => s.split('_')[0]));
+            const da = decoders(a);
+            const db = decoders(b);
+            if (da.size !== db.size) return false;
+            for (const d of da) if (!db.has(d)) return false;
+            return true;
+        }
+
+        function isSpatialDuplicate(a, b) {
+            const A = boundingBox(a.points);
+            const B = boundingBox(b.points);
+
+            const aWidth = A.maxX - A.minX;
+            const bWidth = B.maxX - B.minX;
+            if (aWidth <= 0 || bWidth <= 0) return false;
+
+            const xOverlap = Math.max(0,
+                Math.min(A.maxX, B.maxX) - Math.max(A.minX, B.minX));
+            if (xOverlap < Math.min(aWidth, bWidth) * 0.5) return false;
+
+            const aCenterY = (A.minY + A.maxY) / 2;
+            const bCenterY = (B.minY + B.maxY) / 2;
+            return Math.abs(aCenterY - bCenterY) < Math.max(aWidth, bWidth) * 0.5;
+        }
+
+        function boundingBox(p) {
+            return {
+                minX: Math.min(p.x1, p.x2, p.x3, p.x4),
+                maxX: Math.max(p.x1, p.x2, p.x3, p.x4),
+                minY: Math.min(p.y1, p.y2, p.y3, p.y4),
+                maxY: Math.max(p.y1, p.y2, p.y3, p.y4)
+            };
         }
 
         /**

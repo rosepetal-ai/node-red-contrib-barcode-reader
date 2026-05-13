@@ -65,6 +65,7 @@ typedef struct
 {
   string type;
   string data;
+  int quality;
   string x1;
   string y1;
   string x2;
@@ -127,6 +128,7 @@ string decode_zbar(const cv::Mat& grayscale,
   {
     obj.type = symbol->get_type_name();
     obj.data = symbol->get_data();
+    obj.quality = symbol->get_quality();
     obj.x3 = std::to_string(symbol->get_location_x(0));
     obj.x4 = std::to_string(symbol->get_location_x(1));
     obj.x1 = std::to_string(symbol->get_location_x(2));
@@ -150,7 +152,8 @@ string decode_zbar(const cv::Mat& grayscale,
   {
     result += "{\"type\": \"" + (*elem).type +
 	    "\", \"data\": \"" + (*elem).data +
-	    "\", \"points\": {\"x1\": " +  (*elem).x1 +
+	    "\", \"quality\": " + std::to_string((*elem).quality) +
+	    ", \"points\": {\"x1\": " +  (*elem).x1 +
 		", \"y1\": " + (*elem).y1 +
 		", \"x2\": " + (*elem).x2 +
 		", \"y2\": " + (*elem).y2 +
@@ -222,6 +225,8 @@ string decode_zxing(const cv::Mat& grayscale,
     string type = ZXing::ToString(zxResult.format());
     string data = zxResult.text();
 
+    int quality = zxResult.lineCount();
+
     // Get position information
     auto position = zxResult.position();
 
@@ -244,7 +249,8 @@ string decode_zxing(const cv::Mat& grayscale,
 
     result += "{\"type\": \"" + type +
         "\", \"data\": \"" + data +
-        "\", \"points\": {\"x1\": " + to_string(x1) +
+        "\", \"quality\": " + to_string(quality) +
+        ", \"points\": {\"x1\": " + to_string(x1) +
         ", \"y1\": " + to_string(y1) +
         ", \"x2\": " + to_string(x2) +
         ", \"y2\": " + to_string(y2) +
