@@ -124,14 +124,14 @@ The node registers automatically as `barcode-reader` in the Node-RED palette und
 Each block specifies:
 - **Decoder**: `zbar`, `zxing`, or `quagga2`
 - **Preprocessing**: `original`, `histogram`, or `otsu`
-- **Options**: Decoder-specific settings (e.g., `tryHarder` for ZXing)
+- **Options**: Decoder-specific settings (e.g. `formats` allowlist)
 
 ## Decoders
 
 | Decoder | Type | Formats | Speed | Options |
 |---------|------|---------|-------|---------|
 | **ZBar** | C++ Native | QR, Code-128, EAN, UPC, Code-39 | Fast | None |
-| **ZXing** | C++ Native | All major 1D/2D formats | Medium | `tryHarder` |
+| **ZXing** | C++ Native | All major 1D/2D formats | Medium | `formats` |
 | **Quagga2** | JavaScript | 1D barcodes (Code-128, EAN, UPC, Code-39, Codabar) | Slower | Reader selection |
 
 ### ZBar
@@ -141,8 +141,7 @@ Each block specifies:
 
 ### ZXing
 - Most comprehensive format support
-- `tryHarder` option for difficult barcodes (slower but more accurate)
-- `tryRotate` enabled by default
+- Thorough scan and rotation handling always on (matches zxing.org defaults)
 
 ### Quagga2
 - Pure JavaScript implementation
@@ -254,8 +253,8 @@ Blocks:
   1. ZBar + Original
   2. ZXing + Original
   3. ZBar + Histogram
-  4. ZXing + Histogram (tryHarder)
-  5. ZXing + Otsu (tryHarder)
+  4. ZXing + Histogram
+  5. ZXing + Otsu
 ```
 
 All blocks run concurrently. Results are merged and deduplicated by barcode value.
@@ -270,7 +269,7 @@ Blocks:
   1. ZBar + Original        (fastest)
   2. ZXing + Original       (if ZBar fails)
   3. ZXing + Histogram      (if poor contrast)
-  4. ZXing + Otsu + tryHarder (last resort)
+  4. ZXing + Otsu           (last resort)
 ```
 
 Stops at first successful detection for faster processing.
@@ -280,7 +279,7 @@ Stops at first successful detection for faster processing.
 ```
 Blocks:
   1. ZBar + Original
-  2. ZXing + Histogram (tryHarder)
+  2. ZXing + Histogram
 ```
 
 ### 1D Barcode Focus
@@ -289,7 +288,7 @@ Blocks:
 Blocks:
   1. ZBar + Original
   2. Quagga2 + Histogram
-  3. ZXing + Otsu (tryHarder)
+  3. ZXing + Otsu
 ```
 
 ## Programmatic API
@@ -306,8 +305,7 @@ const binary = barcode.preprocess_otsu(inputMat);
 
 // Decoders (require grayscale input, return JSON string)
 const zbarResult = barcode.decode_zbar(gray);
-const zxingResult = barcode.decode_zxing(gray, false);      // normal
-const zxingHard = barcode.decode_zxing(enhanced, true);     // tryHarder
+const zxingResult = barcode.decode_zxing(gray);
 
 // Parse results
 const barcodes = JSON.parse(zbarResult);
@@ -383,7 +381,7 @@ npm run rebuild
 
 **No barcodes detected**
 - Try different preprocessing methods
-- Enable `tryHarder` for ZXing
+- Add a ZXing block alongside ZBar (different decoders catch different cases)
 - Check image quality and barcode size
 - Ensure barcode is not too small (< 50px) or too large
 

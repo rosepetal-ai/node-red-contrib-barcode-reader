@@ -171,7 +171,6 @@ string decode_zbar(const cv::Mat& grayscale,
 
 // Simple ZXing decoder - takes grayscale image only
 string decode_zxing(const cv::Mat& grayscale,
-                    bool tryHarder,
                     const std::vector<std::string>& formats)
 {
   // Ensure we have a valid grayscale image
@@ -184,10 +183,11 @@ string decode_zxing(const cv::Mat& grayscale,
     return "{\"error\": \"Expected grayscale image (1 channel)\"}";
   }
 
-  // Configure ZXing options
+  // Configure ZXing options. TryHarder/TryRotate are always enabled — fast
+  // mode produced false positives on bar-end and text-strip scan lines.
   ZXing::ReaderOptions hints;
-  hints.setTryHarder(tryHarder);
-  hints.setTryRotate(tryHarder);
+  hints.setTryHarder(true);
+  hints.setTryRotate(true);
 
   if (!formats.empty()) {
     ZXing::BarcodeFormats wanted = ZXing::BarcodeFormat::None;

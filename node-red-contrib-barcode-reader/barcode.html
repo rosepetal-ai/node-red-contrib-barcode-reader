@@ -141,19 +141,6 @@
                                     <div class="formats-grid" style="display: ${formatsAll ? 'none' : 'grid'};"></div>
                                 </div>
                             </div>
-
-                            <div class="decoder-options">
-                                <!-- ZXing options -->
-                                <div class="zxing-options" style="display: ${block.decoder === 'zxing' ? 'block' : 'none'};">
-                                    <div class="block-form-row">
-                                        <label></label>
-                                        <div class="checkbox-wrapper">
-                                            <input type="checkbox" class="try-harder" id="try-harder-${blockId}" ${block.options?.tryHarder ? 'checked' : ''}>
-                                            <label for="try-harder-${blockId}" style="width: auto; margin-left: 5px;">Try Harder (slower, more accurate)</label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </li>
                 `;
@@ -167,9 +154,6 @@
                 // Decoder change handler — re-render formats grid keeping still-supported selections
                 blockElement.find('.block-decoder').on('change', function() {
                     const decoder = $(this).val();
-                    blockElement.find('.decoder-options > div').hide();
-                    blockElement.find(`.${decoder}-options`).show();
-
                     const currentlyChecked = new Set();
                     blockElement.find('.format-cb:checked').each(function() {
                         currentlyChecked.add($(this).val());
@@ -229,10 +213,6 @@
                     options.formats = selected;
                 } else {
                     options.formats = [];
-                }
-
-                if (decoder === 'zxing') {
-                    options.tryHarder = blockElement.find('.try-harder').is(':checked');
                 }
 
                 blocks.push({
@@ -327,14 +307,13 @@
     <h4>Decoder Options</h4>
     <ul>
         <li><strong>ZBar</strong>: Fast, reliable, good for standard barcodes and QR codes</li>
-        <li><strong>ZXing</strong>: Comprehensive format support, "Try Harder" option for difficult codes</li>
+        <li><strong>ZXing</strong>: Comprehensive format support, thorough scan by default</li>
         <li><strong>Quagga2</strong>: JavaScript-based, good for 1D barcodes</li>
     </ul>
 
     <h4>Per-block Options</h4>
     <ul>
         <li><strong>Formats</strong>: allowlist of barcode symbologies. "All formats" leaves the decoder unrestricted (default). The list shown is filtered to formats the selected decoder actually supports — ZBar covers most 1D + QR/PDF417, ZXing adds DataMatrix and Aztec, Quagga2 is 1D-only.</li>
-        <li><strong>Try Harder</strong> (ZXing): more thorough scan, slower, finds difficult codes.</li>
     </ul>
 
     <h4>Preprocessing Options</h4>
@@ -402,7 +381,7 @@
     <ul>
         <li>Block 1: ZBar + Original</li>
         <li>Block 2: ZBar + Histogram</li>
-        <li>Block 3: ZXing + Original + Try Harder</li>
+        <li>Block 3: ZXing + Original</li>
         <li>Mode: Parallel</li>
     </ul>
 
@@ -410,7 +389,7 @@
     <ul>
         <li>Block 1: ZBar + Original (fastest)</li>
         <li>Block 2: ZXing + Histogram (if first fails)</li>
-        <li>Block 3: ZXing + Otsu + Try Harder (last resort)</li>
+        <li>Block 3: ZXing + Otsu (last resort)</li>
         <li>Mode: Sequential</li>
     </ul>
 
@@ -424,13 +403,13 @@
     <h3>Troubleshooting</h3>
     <dl class="message-properties">
         <dt>No detection</dt>
-        <dd>Add blocks with stronger preprocessing (Histogram, Otsu) or enable "Try Harder" for ZXing. If Formats is restricted, double-check the actual symbology of your barcode.</dd>
+        <dd>Add blocks with stronger preprocessing (Histogram, Otsu) or add a ZXing block alongside ZBar. If Formats is restricted, double-check the actual symbology of your barcode.</dd>
 
         <dt>UPC-A read as EAN-13 with leading 0</dt>
         <dd>Add <code>UPCA</code> to the Formats list (or enable both <code>UPCA</code> and <code>EAN13</code>). When neither is restricted, ZBar may emit UPC-A codes as EAN-13 with a leading 0.</dd>
 
         <dt>Slow performance</dt>
-        <dd>Use Sequential mode or reduce the number of blocks. Restricting Formats also gives a small speedup, especially with ZXing + Try Harder.</dd>
+        <dd>Use Sequential mode or reduce the number of blocks. Restricting Formats also gives a small speedup, especially on ZXing blocks.</dd>
 
         <dt>Duplicate results</dt>
         <dd>This is normal in Parallel mode - duplicates are automatically deduplicated and tracked in "detectedBy"</dd>
@@ -571,11 +550,6 @@
         font-size: 13px;
         color: #666;
         cursor: pointer;
-    }
-
-    /* Decoder Options */
-    #blocks-container .decoder-options {
-        margin-top: 4px;
     }
 
     /* Formats grid */

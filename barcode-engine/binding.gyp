@@ -16,7 +16,8 @@
       "cflags_cc": [ "-std=c++17", "-fexceptions" ],
       "sources": [
         "./src/decoder.cpp",
-        "./src/index.cpp"
+        "./src/index.cpp",
+        "./src/compat_glibc.c"
       ],
       "defines": [ "NAPI_CPP_EXCEPTIONS" ],
       "conditions": [
@@ -65,6 +66,10 @@
             "/usr/include/ZXing",
             "/usr/local/include/ZXing",
             "/opt/homebrew/include/ZXing"
+          ],
+          "ldflags": [
+            "-static-libgcc",
+            "-static-libstdc++"
           ]
         }]
       ],

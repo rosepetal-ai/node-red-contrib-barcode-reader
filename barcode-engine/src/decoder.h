@@ -7,7 +7,6 @@
 std::string decode_zbar(const cv::Mat& grayscale,
                         const std::vector<std::string>& formats);
 std::string decode_zxing(const cv::Mat& grayscale,
-                         bool tryHarder,
                          const std::vector<std::string>& formats);
 
 // Preprocessing primitives - convert BGR to preprocessed grayscale

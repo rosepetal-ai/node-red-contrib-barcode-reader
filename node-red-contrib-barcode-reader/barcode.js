@@ -231,10 +231,8 @@ module.exports = function(RED) {
          * Decode with ZXing
          */
         async function decodeWithZXing(preprocessed, block) {
-            const tryHarder = block.options?.tryHarder || false;
             const formats = block.options?.formats || [];
-            const resultJson = await barcode.decode_zxing(
-                preprocessed, tryHarder, formats);
+            const resultJson = await barcode.decode_zxing(preprocessed, formats);
             const parsed = JSON.parse(resultJson);
 
             if (parsed.error) {

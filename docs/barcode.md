@@ -124,7 +124,7 @@ Each block represents a detection attempt with specific configuration. Blocks ca
 
 **ZXing**
 - Comprehensive format support
-- "Try Harder" option for difficult codes
+- Thorough scan and rotation handling always enabled (matches zxing.org defaults)
 - Good for damaged or low-quality barcodes
 - Slower but more thorough
 
@@ -159,11 +159,6 @@ Each block has a **Formats** allowlist. The list shown in the editor is filtered
 - **Specific formats**: only the checked symbologies are decoded. Useful for reducing false positives in production lines that scan a single known format, and to avoid ZBar's UPC-A → EAN-13 leading-zero ambiguity (force `UPCA` to get 12-digit output).
 
 Selections persist across decoder changes when the new decoder still supports them — for example switching a block from ZBar to ZXing with `UPCA` checked keeps `UPCA` checked; switching to Quagga2 from ZXing with `Aztec` checked drops `Aztec` (Quagga2 is 1D-only).
-
-#### Decoder-Specific Options
-
-**ZXing Options:**
-- **Try Harder**: Enables more thorough scanning (slower but more accurate)
 
 ## Input Format
 
@@ -273,8 +268,8 @@ The execution time is also displayed under the node in the editor.
 - **Block 1**: ZBar + Original
 - **Block 2**: ZBar + Histogram Equalization
 - **Block 3**: ZBar + Otsu Threshold
-- **Block 4**: ZXing + Original + Try Harder
-- **Block 5**: ZXing + Histogram + Try Harder
+- **Block 4**: ZXing + Original
+- **Block 5**: ZXing + Histogram
 
 **Behavior**: All blocks run simultaneously via async workers, results are merged and deduplicated. The Node-RED event loop remains free to handle other messages.
 
@@ -288,7 +283,7 @@ The execution time is also displayed under the node in the editor.
 - **Mode**: Sequential
 - **Block 1**: ZBar + Original (fastest)
 - **Block 2**: ZXing + Original (if Block 1 fails)
-- **Block 3**: ZXing + Histogram + Try Harder (last resort)
+- **Block 3**: ZXing + Histogram (last resort)
 
 **Behavior**: Stops at first successful detection
 
@@ -402,7 +397,6 @@ All native decoding and preprocessing runs on C++ async workers. This means:
 2. **Preprocessing method**: Original < Histogram < Otsu
 3. **Decoder choice**: Quagga2 < ZBar < ZXing (approximate)
 4. **Image size**: Larger images take longer
-5. **Try Harder option**: Significantly increases ZXing processing time
 
 ### Optimization Strategies
 
@@ -416,7 +410,6 @@ All native decoding and preprocessing runs on C++ async workers. This means:
 #### For Accuracy
 - Use Parallel mode
 - Include multiple preprocessing options
-- Enable "Try Harder" on ZXing blocks
 - Use multiple decoders
 - Ensure good image quality (1500px max on long side recommended)
 
@@ -475,9 +468,9 @@ const binary   = await barcode.preprocess_otsu(inputMat);
 const zbarAll  = await barcode.decode_zbar(gray, []);                 // all symbologies
 const zbarUpc  = await barcode.decode_zbar(gray, ['UPCA']);           // UPC-A only
 
-// Signature: decode_zxing(image, tryHarder, formats)
-const zxAll    = await barcode.decode_zxing(gray, false, []);          // all formats
-const zxQrOnly = await barcode.decode_zxing(gray, true,  ['QRCode']);  // QR + tryHarder
+// Signature: decode_zxing(image, formats)
+const zxAll    = await barcode.decode_zxing(gray, []);          // all formats
+const zxQrOnly = await barcode.decode_zxing(gray, ['QRCode']);  // QR only
 
 // Parse results
 const { results } = JSON.parse(zbarUpc);
@@ -520,7 +513,7 @@ const converted = await barcode.convertToMat(anyInput);      // normalize input
 
 **Solutions:**
 1. Add blocks with stronger preprocessing (Histogram, Otsu)
-2. Enable "Try Harder" on ZXing blocks
+2. Add a ZXing block alongside ZBar (different decoders catch different cases)
 3. Switch to Parallel mode for comprehensive scanning
 4. Verify barcode format is supported
 5. Check image quality and resolution
@@ -565,13 +558,13 @@ npm install -g node-gyp
 **Possible causes:**
 - Too many blocks in Parallel mode
 - Large image resolution
-- Multiple "Try Harder" blocks
+- Many ZXing blocks (slower than ZBar)
 - Processing arrays of many images
 
 **Solutions:**
 1. Switch to Sequential mode
 2. Reduce number of blocks
-3. Disable "Try Harder" or use selectively
+3. Prefer ZBar blocks for cases ZBar can handle on its own
 4. Resize images before processing
 5. Remove blocks with slow preprocessing (Otsu)
 
@@ -585,8 +578,7 @@ npm install -g node-gyp
 **Solutions:**
 1. Crop image to single barcode region
 2. Use stronger preprocessing
-3. Enable "Try Harder" on ZXing
-4. Verify expected barcode format
+3. Verify expected barcode format
 
 ### UPC-A read as EAN-13 with leading 0
 
@@ -642,7 +634,7 @@ You can modify block configuration programmatically before the node:
 msg.barcodeConfig = {
   blocks: [
     { decoder: "zbar",  preprocessing: "original",  options: { formats: ["UPCA"] } },
-    { decoder: "zxing", preprocessing: "histogram", options: { formats: ["QRCode"], tryHarder: true } }
+    { decoder: "zxing", preprocessing: "histogram", options: { formats: ["QRCode"] } }
   ],
   executionMode: "sequential"
 };
