@@ -387,11 +387,23 @@ module.exports = function(RED) {
             const aCount = a.detectedBy?.length || 1;
             const bCount = b.detectedBy?.length || 1;
             if (aCount !== bCount) return aCount > bCount;
-            // Same agreement count: quality is only comparable within one decoder
+            // Same agreement count: compare within one decoder only.
             if (sameDecoderSet(a, b)) {
+                // A real barcode is confirmed over a tall band; a ghost (a misread
+                // on a blurry scan line) is a thin sliver. lineCount/quality can be
+                // higher for the ghost, so prefer vertical extent and fall back to
+                // quality only when bands are equal.
+                const aHeight = boxHeight(a.points);
+                const bHeight = boxHeight(b.points);
+                if (aHeight !== bHeight) return aHeight > bHeight;
                 return (a.quality || 0) > (b.quality || 0);
             }
             return false;
+        }
+
+        function boxHeight(p) {
+            const b = boundingBox(p);
+            return b.maxY - b.minY;
         }
 
         function sameDecoderSet(a, b) {

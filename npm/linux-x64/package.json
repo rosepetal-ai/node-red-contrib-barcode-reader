@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/node-red-contrib-barcode-reader-linux-x64",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Prebuilt native binary for Linux x64 (glibc)",
   "os": ["linux"],
   "cpu": ["x64"],
