@@ -24,7 +24,7 @@
     "url": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader/issues"
   },
   "engines": {
-    "node": ">=14.0"
+    "node": ">=18"
   },
   "node-red": {
     "nodes": {
@@ -34,6 +34,7 @@
   "dependencies": {
     "rosepetal-barcode-engine": "file:../barcode-engine",
     "@ericblade/quagga2": "1.12.1",
+    "@rosepetal/barcode-engine-client": "^0.2.0",
     "jpeg-js": "^0.4.4"
   }
 }

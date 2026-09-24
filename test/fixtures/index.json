@@ -1,0 +1,699 @@
+{
+  "generatedWith": {
+    "engine": "rp-barcode 0.1.0 (schema 1.0, GS1 Syntax Dictionary 2026-01-27)",
+    "command": "RP_BARCODE=<rp-barcode> node scripts/make-fixtures.js",
+    "effort": "robust",
+    "xPx": 3,
+    "heightPx": 60
+  },
+  "fixtures": [
+    {
+      "file": "ean13.png",
+      "width": 347,
+      "height": 68,
+      "payload": "4006381333931",
+      "symbology": "EAN13",
+      "decodeOptions": {},
+      "formats": [
+        "EAN-13"
+      ],
+      "symbols": [
+        {
+          "symbology": "EAN13",
+          "identifier": "]E0",
+          "value": "4006381333931",
+          "bytes": "NDAwNjM4MTMzMzkzMQ==",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 37,
+              "y": 4
+            },
+            {
+              "x": 322,
+              "y": 4
+            },
+            {
+              "x": 322,
+              "y": 64
+            },
+            {
+              "x": 37,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 1,
+            "y": 0,
+            "w": 346,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "ean8.png",
+      "width": 251,
+      "height": 68,
+      "payload": "96385074",
+      "symbology": "EAN8",
+      "decodeOptions": {},
+      "formats": [
+        "EAN-8"
+      ],
+      "symbols": [
+        {
+          "symbology": "EAN8",
+          "identifier": "]E4",
+          "value": "96385074",
+          "bytes": "OTYzODUwNzQ=",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 25,
+              "y": 4
+            },
+            {
+              "x": 226,
+              "y": 4
+            },
+            {
+              "x": 226,
+              "y": 64
+            },
+            {
+              "x": 25,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 251,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "upca.png",
+      "width": 347,
+      "height": 68,
+      "payload": "012345678905",
+      "symbology": "UPCA",
+      "decodeOptions": {},
+      "formats": [
+        "UPC-A"
+      ],
+      "symbols": [
+        {
+          "symbology": "UPCA",
+          "identifier": "]E0",
+          "value": "012345678905",
+          "bytes": "MDEyMzQ1Njc4OTA1",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 31,
+              "y": 4
+            },
+            {
+              "x": 316,
+              "y": 4
+            },
+            {
+              "x": 316,
+              "y": 64
+            },
+            {
+              "x": 31,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 347,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "upce.png",
+      "width": 209,
+      "height": 68,
+      "payload": "01234565",
+      "symbology": "UPCE",
+      "decodeOptions": {},
+      "formats": [
+        "UPC-E"
+      ],
+      "symbols": [
+        {
+          "symbology": "UPCE",
+          "identifier": "]E0",
+          "value": "01234565",
+          "bytes": "MDEyMzQ1NjU=",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 31,
+              "y": 4
+            },
+            {
+              "x": 184,
+              "y": 4
+            },
+            {
+              "x": 184,
+              "y": 64
+            },
+            {
+              "x": 31,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 209,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "code128.png",
+      "width": 536,
+      "height": 68,
+      "payload": "RO216221291TH",
+      "symbology": "Code128",
+      "decodeOptions": {},
+      "formats": [
+        "Code128"
+      ],
+      "symbols": [
+        {
+          "symbology": "Code128",
+          "identifier": "]C0",
+          "value": "RO216221291TH",
+          "bytes": "Uk8yMTYyMjEyOTFUSA==",
+          "gs1": false,
+          "corners": [
+            {
+              "x": 34,
+              "y": 4
+            },
+            {
+              "x": 502,
+              "y": 4
+            },
+            {
+              "x": 502,
+              "y": 64
+            },
+            {
+              "x": 34,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 536,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "code39.png",
+      "width": 457,
+      "height": 68,
+      "payload": "ABC-123",
+      "symbology": "Code39",
+      "decodeOptions": {},
+      "formats": [
+        "Code39"
+      ],
+      "symbols": [
+        {
+          "symbology": "Code39",
+          "identifier": "]A0",
+          "value": "ABC-123",
+          "bytes": "QUJDLTEyMw==",
+          "gs1": false,
+          "corners": [
+            {
+              "x": 34,
+              "y": 4
+            },
+            {
+              "x": 422.5,
+              "y": 4
+            },
+            {
+              "x": 422.5,
+              "y": 64
+            },
+            {
+              "x": 34,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "not_applicable",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 457,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "code93.png",
+      "width": 368,
+      "height": 68,
+      "payload": "ABC-123",
+      "symbology": "Code93",
+      "decodeOptions": {},
+      "formats": [
+        "Code93"
+      ],
+      "symbols": [
+        {
+          "symbology": "Code93",
+          "identifier": "]G0",
+          "value": "ABC-123",
+          "bytes": "QUJDLTEyMw==",
+          "gs1": false,
+          "corners": [
+            {
+              "x": 34,
+              "y": 4
+            },
+            {
+              "x": 334,
+              "y": 4
+            },
+            {
+              "x": 334,
+              "y": 64
+            },
+            {
+              "x": 34,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 368,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "codabar.png",
+      "width": 305,
+      "height": 68,
+      "payload": "A12345B",
+      "symbology": "Codabar",
+      "decodeOptions": {},
+      "formats": [
+        "Codabar"
+      ],
+      "symbols": [
+        {
+          "symbology": "Codabar",
+          "identifier": "]F0",
+          "value": "A12345B",
+          "bytes": "QTEyMzQ1Qg==",
+          "gs1": false,
+          "corners": [
+            {
+              "x": 34,
+              "y": 4
+            },
+            {
+              "x": 271,
+              "y": 4
+            },
+            {
+              "x": 271,
+              "y": 64
+            },
+            {
+              "x": 34,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "not_applicable",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 305,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "itf.png",
+      "width": 430,
+      "height": 68,
+      "payload": "04006381333931",
+      "symbology": "ITF",
+      "decodeOptions": {},
+      "formats": [
+        "ITF"
+      ],
+      "symbols": [
+        {
+          "symbology": "ITF",
+          "identifier": "]I1",
+          "value": "04006381333931",
+          "bytes": "MDQwMDYzODEzMzM5MzE=",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 34,
+              "y": 4
+            },
+            {
+              "x": 395.5,
+              "y": 4
+            },
+            {
+              "x": 395.5,
+              "y": 64
+            },
+            {
+              "x": 34,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 430,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "ean13-rot90.png",
+      "width": 68,
+      "height": 347,
+      "payload": "4006381333931",
+      "symbology": "EAN13",
+      "decodeOptions": {},
+      "formats": [
+        "EAN-13"
+      ],
+      "symbols": [
+        {
+          "symbology": "EAN13",
+          "identifier": "]E0",
+          "value": "4006381333931",
+          "bytes": "NDAwNjM4MTMzMzkzMQ==",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 64,
+              "y": 37
+            },
+            {
+              "x": 64,
+              "y": 322
+            },
+            {
+              "x": 4,
+              "y": 322
+            },
+            {
+              "x": 4,
+              "y": 37
+            }
+          ],
+          "orientation": 90,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 1,
+            "w": 68,
+            "h": 346,
+            "orientation": 90
+          }
+        }
+      ]
+    },
+    {
+      "file": "upca-addon5.png",
+      "width": 503,
+      "height": 68,
+      "payload": "012345678905",
+      "symbology": "UPCA",
+      "decodeOptions": {
+        "addOn": "read"
+      },
+      "formats": [
+        "UPC-A",
+        "EAN-5"
+      ],
+      "symbols": [
+        {
+          "symbology": "UPCA",
+          "identifier": "]E0",
+          "value": "012345678905",
+          "bytes": "MDEyMzQ1Njc4OTA1",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 31,
+              "y": 4
+            },
+            {
+              "x": 316,
+              "y": 4
+            },
+            {
+              "x": 316,
+              "y": 64
+            },
+            {
+              "x": 31,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 503,
+            "h": 68,
+            "orientation": 0
+          }
+        },
+        {
+          "symbology": "UPCA",
+          "identifier": "]E2",
+          "value": "12345",
+          "bytes": "MTIzNDU=",
+          "gs1": false,
+          "corners": [
+            {
+              "x": 343,
+              "y": 4
+            },
+            {
+              "x": 484,
+              "y": 4
+            },
+            {
+              "x": 484,
+              "y": 64
+            },
+            {
+              "x": 343,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "not_applicable",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 503,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "code39-fullascii.png",
+      "width": 500,
+      "height": 68,
+      "payload": "ab/c",
+      "symbology": "Code39",
+      "decodeOptions": {
+        "code39FullAscii": true
+      },
+      "formats": [
+        "Code39"
+      ],
+      "symbols": [
+        {
+          "symbology": "Code39",
+          "identifier": "]A4",
+          "value": "ab/c",
+          "bytes": "YWIvYw==",
+          "gs1": false,
+          "corners": [
+            {
+              "x": 34,
+              "y": 4
+            },
+            {
+              "x": 466,
+              "y": 4
+            },
+            {
+              "x": 466,
+              "y": 64
+            },
+            {
+              "x": 34,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "not_applicable",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 500,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "gs1-128.png",
+      "width": 569,
+      "height": 68,
+      "payload": "10ABC\u001d21XYZ",
+      "symbology": "Code128",
+      "decodeOptions": {},
+      "formats": [
+        "Code128"
+      ],
+      "symbols": [
+        {
+          "symbology": "Code128",
+          "identifier": "]C1",
+          "value": "10ABC\u001d21XYZ",
+          "bytes": "MTBBQkMdMjFYWVo=",
+          "gs1": true,
+          "corners": [
+            {
+              "x": 34,
+              "y": 4
+            },
+            {
+              "x": 535,
+              "y": 4
+            },
+            {
+              "x": 535,
+              "y": 64
+            },
+            {
+              "x": 34,
+              "y": 64
+            }
+          ],
+          "orientation": 0,
+          "confidence": 1,
+          "lines": 60,
+          "checksum": "valid",
+          "region": {
+            "x": 0,
+            "y": 0,
+            "w": 569,
+            "h": 68,
+            "orientation": 0
+          }
+        }
+      ]
+    },
+    {
+      "file": "blank.png",
+      "width": 200,
+      "height": 100,
+      "payload": null,
+      "symbology": null,
+      "decodeOptions": {},
+      "formats": [],
+      "symbols": []
+    }
+  ]
+}

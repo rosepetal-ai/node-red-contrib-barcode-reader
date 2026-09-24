@@ -14,7 +14,47 @@ const QUAGGA_FORMAT_MAP = {
 // Default = every reader Quagga2 supports (used when a block has no Formats filter)
 const QUAGGA_DEFAULT_READERS = Object.values(QUAGGA_FORMAT_MAP);
 
+// Rosepetal SDK engine (rp-barcode serve): one child process per Node-RED process, shared by every node with a
+// `rosepetal` block (@rosepetal/barcode-engine-client, through lib/rp-mapping.js)
+const rp = require('./lib/rp-mapping');
+
+// Fields symbolToRaw adds to a raw result (SDK schema 1.0). convertToFinalFormat copies them only when present, so
+// the output of a zbar / zxing / quagga2 / rp-projection block is byte for byte the 1.3.0 one (regression test).
+const RP_EXTRA_FIELDS = ['symbology', 'identifier', 'orientation', 'lines', 'confidence', 'checksum'];
+
+// Engine stderr (one line per event: bad_frame reasons, panics) -> Node-RED log, hooked once per process. The
+// engine emits raw chunks: they are re-joined and written one line at a time, the last partial line when the
+// process goes away. `rpLog` is the RED.log of the latest module load (production loads the module once).
+const MAX_STDERR_LINE = 8192;
+let rpLog = null;
+let rpStderrHooked = false;
+function hookEngineStderr() {
+    if (rpStderrHooked) return;
+    rpStderrHooked = true;
+    const engine = rp.getEngine();
+    let rest = '';
+    const writeLine = (line) => {
+        const text = line.trimEnd();
+        if (text !== '' && rpLog) rpLog.warn('[rp-barcode] ' + text);
+    };
+    engine.on('stderr', (chunk) => {
+        const lines = (rest + String(chunk)).split('\n');
+        rest = lines.pop();
+        lines.forEach(writeLine);
+        if (rest.length > MAX_STDERR_LINE) {   // a runaway line (garbage, no newline): written in pieces, never kept
+            writeLine(rest);
+            rest = '';
+        }
+    });
+    engine.on('exit', () => {
+        writeLine(rest);
+        rest = '';
+    });
+}
+
 module.exports = function(RED) {
+    rpLog = RED.log;
+
     function BarcodeReaderNode(config) {
         RED.nodes.createNode(this, config);
         const node = this;
@@ -26,6 +66,23 @@ module.exports = function(RED) {
             Quagga = require('@ericblade/quagga2');
         } catch (err) {
             node.warn('Quagga2 not available. Install @ericblade/quagga2 to use Quagga decoder.');
+        }
+
+        // The shared engine is counted only by the nodes with a rosepetal block: started lazily by their first
+        // decode, stopped when the last of them closes (a redeploy included). A node without one never touches it
+        // and, like 1.3.0, registers no close handler.
+        const usesRosepetal = (config.blocks || []).some((b) => b && b.decoder === 'rosepetal');
+        let rpClosed = false;   // Node-RED does not cancel an input handler on close: the message still in flight
+                                // (next crop of an array, next block in sequential) must not restart the engine
+        if (usesRosepetal) {
+            rp.acquire();
+            hookEngineStderr();
+            node.on('close', (removed, done) => {
+                rpClosed = true;
+                // release() resolves once the engine is gone (drain <= 2 s, shutdown, SIGTERM, SIGKILL); a request
+                // still in flight rejects with `exited` inside its own block, so nothing here can throw or hang
+                rp.release().then(() => done(), () => done());
+            });
         }
 
         node.on('input', async (msg, send, done) => {
@@ -194,6 +251,9 @@ module.exports = function(RED) {
                 case 'quagga2':
                     rawResults = await decodeWithQuagga(preprocessed, block, node, Quagga);
                     break;
+                case 'rosepetal':
+                    rawResults = await decodeWithRosepetal(preprocessed, block, blockIndex, node);
+                    break;
                 default:
                     throw new Error(`Unknown decoder: ${block.decoder}`);
             }
@@ -270,6 +330,50 @@ module.exports = function(RED) {
             }
 
             return parsed.results || [];
+        }
+
+        /**
+         * Decode with the Rosepetal SDK engine (rp-barcode serve). The addon's preprocessed gray goes to the engine
+         * as a raw 1-channel bitmap; its schema-1.0 symbols come back as raw results (lib/rp-mapping.js symbolToRaw).
+         * An engine that cannot run (not installed, wrong protocol, or inside the wait after a failure) warns once
+         * per node and yields []; any other failure (invalid input, timeout, crash, overload) throws and the caller
+         * warns "Block i (rosepetal) failed: ...". Formats with nothing the SDK reads (2D only) yield [] without a call.
+         * After the node closed (a redeploy with this message in flight) the block yields [] with a debug line, never
+         * a warn: nothing of the old node may restart the engine.
+         */
+        async function decodeWithRosepetal(preprocessed, block, blockIndex, node) {
+            const { decodeOptions, skip, timeoutMs } = rp.optionsFromBlock(block);
+            if (skip) {
+                return [];   // Formats holds nothing the SDK reads (2D only): like Quagga2, no call
+            }
+            if (rpClosed) {
+                node.debug(`Block ${blockIndex} (rosepetal) skipped: the node closed while this message was in flight`);
+                return [];
+            }
+            const engine = rp.getEngine();
+            try {
+                const image = { width: preprocessed.width, height: preprocessed.height, channels: 1, colorSpace: 'GRAY', encoding: 'raw' };
+                const result = await engine.decode(image, preprocessed.data, decodeOptions, { timeoutMs });
+                node.rpEngineWarned = false;   // it works again: the next outage warns again, once
+                if (!node.rpEngineLogged && engine.hello) {
+                    node.rpEngineLogged = true;
+                    node.log(`Rosepetal engine ${engine.hello.engineVersion} (protocol ${engine.hello.protocol}, pid ${engine.pid})`);
+                }
+                return result.symbols.map(rp.symbolToRaw);
+            } catch (err) {
+                if (err instanceof rp.EngineError && (err.code === 'unavailable' || err.code === 'protocol')) {
+                    if (!node.rpEngineWarned) {
+                        node.rpEngineWarned = true;
+                        // An engine that ran and went away is restarted by a later request (growing wait): the install
+                        // hint is for one that never ran (not found, not executable, wrong protocol)
+                        const crashed = engine.lastError instanceof rp.EngineError && engine.lastError.code === 'exited';
+                        const advice = crashed ? 'It is restarted by a later request' : rp.INSTALL_HINT;
+                        node.warn(`Rosepetal engine not available: ${err.message}. ${advice}`);
+                    }
+                    return [];
+                }
+                throw err;
+            }
         }
 
         /**
@@ -504,7 +608,7 @@ module.exports = function(RED) {
             ];
             const [center, size, angle] = getRotation(absoluteCorners);
 
-            return {
+            const out = {
                 format: result.type,
                 value: result.data,
                 box: {
@@ -521,6 +625,11 @@ module.exports = function(RED) {
                 corners: corners,
                 detectedBy: result.detectedBy
             };
+            // SDK fields (rosepetal block as the base of the result); absent from every other decoder's result
+            for (const key of RP_EXTRA_FIELDS) {
+                if (result[key] !== undefined) out[key] = result[key];
+            }
+            return out;
         }
 
         /**

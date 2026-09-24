@@ -1,10 +1,13 @@
 {
   "name": "@rosepetal/node-red-contrib-barcode-reader",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Rosepetal multi-decoder barcode scanner with ZBar, ZXing, and Quagga2 support",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "repository": {
     "type": "git",
@@ -32,11 +35,12 @@
   "homepage": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader#readme",
   "dependencies": {
     "@ericblade/quagga2": "1.12.1",
+    "@rosepetal/barcode-engine-client": "^0.2.0",
     "jpeg-js": "^0.4.4"
   },
   "optionalDependencies": {
-    "@rosepetal/node-red-contrib-barcode-reader-linux-x64": "1.3.0",
     "@rosepetal/node-red-contrib-barcode-reader-linux-arm64": "1.3.0",
+    "@rosepetal/node-red-contrib-barcode-reader-linux-x64": "1.3.0",
     "@rosepetal/node-red-contrib-barcode-reader-linuxmusl-x64": "1.3.0"
   },
   "config": {
@@ -47,5 +51,10 @@
     "nodes": {
       "barcode-reader": "node-red-contrib-barcode-reader/barcode.js"
     }
+  },
+  "devDependencies": {
+    "node-red": "5.0.7",
+    "node-red-node-test-helper": "0.3.6",
+    "pngjs": "7.0.0"
   }
 }

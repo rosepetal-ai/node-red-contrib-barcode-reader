@@ -52,6 +52,10 @@
                     'UPCA', 'UPCE', 'EAN13', 'EAN8',
                     'Code128', 'Code39', 'Code93', 'Codabar',
                     'ITF', 'DataBar'
+                ],
+                rosepetal: [
+                    'UPCA', 'UPCE', 'EAN13', 'EAN8',
+                    'Code128', 'Code39', 'Code93', 'Codabar', 'ITF'
                 ]
             };
 
@@ -98,11 +102,27 @@
                 blockElement.find('.formats-grid').html(checkboxes);
             }
 
-            // Projection has no preprocessing step but has its own options
+            // Projection has no preprocessing step but has its own options; the Rosepetal SDK keeps
+            // preprocessing and adds its own option rows
             function toggleDecoderRows(blockElement, decoder) {
                 const isProjection = decoder === 'rp-projection';
+                const isRosepetal = decoder === 'rosepetal';
                 blockElement.find('.preprocessing-row').toggle(!isProjection);
                 blockElement.find('.projection-row').toggle(isProjection);
+                blockElement.find('.rosepetal-row').toggle(isRosepetal);
+            }
+
+            // Saved option or its default (an absent, null or empty value is unset, as in lib/rp-mapping.js), and
+            // the attribute fragments the rosepetal rows are rendered with
+            function rpOption(block, key, fallback) {
+                const value = block.options ? block.options[key] : undefined;
+                return value === undefined || value === null || value === '' ? fallback : value;
+            }
+            function rpSelected(block, key, fallback, value) {
+                return rpOption(block, key, fallback) === value ? 'selected' : '';
+            }
+            function rpChecked(block, key, fallback) {
+                return rpOption(block, key, fallback) ? 'checked' : '';
             }
 
             function addBlockUI(block, index) {
@@ -129,6 +149,7 @@
                                     <option value="zxing" ${block.decoder === 'zxing' ? 'selected' : ''}>ZXing</option>
                                     <option value="quagga2" ${block.decoder === 'quagga2' ? 'selected' : ''}>Quagga2</option>
                                     <option value="rp-projection" ${block.decoder === 'rp-projection' ? 'selected' : ''}>Rosepetal Projection (noisy 1D)</option>
+                                    <option value="rosepetal" ${block.decoder === 'rosepetal' ? 'selected' : ''}>Rosepetal SDK</option>
                                 </select>
                             </div>
 
@@ -144,6 +165,56 @@
                             <div class="block-form-row projection-row">
                                 <label>Min votes</label>
                                 <input type="number" class="block-min-votes" min="1" step="1" value="${block.options?.minVotes || 3}">
+                            </div>
+
+                            <div class="block-form-row rosepetal-row">
+                                <label>Effort</label>
+                                <select class="block-rp-effort">
+                                    <option value="robust" ${rpSelected(block, 'effort', 'robust', 'robust')}>Robust (default)</option>
+                                    <option value="normal" ${rpSelected(block, 'effort', 'robust', 'normal')}>Normal (fast lane)</option>
+                                </select>
+                            </div>
+                            <div class="block-form-row rosepetal-row">
+                                <label>Directions</label>
+                                <select class="block-rp-directions">
+                                    <option value="both" ${rpSelected(block, 'directions', 'both', 'both')}>Rows and columns</option>
+                                    <option value="horizontal" ${rpSelected(block, 'directions', 'both', 'horizontal')}>Rows only</option>
+                                    <option value="vertical" ${rpSelected(block, 'directions', 'both', 'vertical')}>Columns only</option>
+                                </select>
+                                <span class="rp-hint">Effort Normal only: Robust always scans both</span>
+                            </div>
+                            <div class="block-form-row rosepetal-row">
+                                <label>Add-ons</label>
+                                <select class="block-rp-addon">
+                                    <option value="ignore" ${rpSelected(block, 'addOn', 'ignore', 'ignore')}>Ignore EAN-2 / EAN-5</option>
+                                    <option value="read" ${rpSelected(block, 'addOn', 'ignore', 'read')}>Read as separate symbols</option>
+                                    <option value="require" ${rpSelected(block, 'addOn', 'ignore', 'require')}>Require (drop EAN/UPC without add-on)</option>
+                                </select>
+                            </div>
+                            <div class="block-form-row rosepetal-row">
+                                <label>Quiet zone</label>
+                                <select class="block-rp-quietzone">
+                                    <option value="tolerant" ${rpSelected(block, 'quietZone', 'tolerant', 'tolerant')}>Tolerant (default)</option>
+                                    <option value="spec" ${rpSelected(block, 'quietZone', 'tolerant', 'spec')}>Spec (GS1 / 10X)</option>
+                                </select>
+                            </div>
+                            <div class="block-form-row rosepetal-row">
+                                <label>Min lines</label>
+                                <input type="number" class="block-rp-minlines" min="0" step="1" value="${rpOption(block, 'minLines', 0)}">
+                            </div>
+                            <div class="block-form-row rosepetal-row">
+                                <label>Timeout (ms)</label>
+                                <input type="number" class="block-rp-timeout" min="1" max="2147483647" step="100" value="${rpOption(block, 'timeoutMs', 5000)}">
+                            </div>
+                            <div class="block-form-row rosepetal-row">
+                                <label>Flags</label>
+                                <div class="rosepetal-flags">
+                                    <label class="format-checkbox"><input type="checkbox" class="block-rp-tryinvert" ${rpChecked(block, 'tryInvert', true)}><span>Try inverted image</span></label>
+                                    <label class="format-checkbox"><input type="checkbox" class="block-rp-upca" ${rpChecked(block, 'upcaAsEan13', false)}><span>UPC-A as EAN-13</span></label>
+                                    <label class="format-checkbox"><input type="checkbox" class="block-rp-code39" ${rpChecked(block, 'code39FullAscii', false)}><span>Code 39 full ASCII</span></label>
+                                    <label class="format-checkbox"><input type="checkbox" class="block-rp-checksum" ${rpChecked(block, 'checksum', false)}><span>Optional checksum</span></label>
+                                    <span class="rp-hint rp-hint-wide">Try inverted image: Effort Normal only (Robust always tries it)</span>
+                                </div>
                             </div>
 
                             <div class="block-form-row formats-row">
@@ -246,6 +317,27 @@
                     }
                 }
 
+                if (decoder === 'rosepetal') {
+                    // Enums as chosen; integers as whole numbers (an empty or invalid input saves the default, as Min
+                    // votes does; a typed `1e3` is 1000, where parseInt would stop at the exponent and save 1 ms);
+                    // booleans from the checkboxes. optionsFromBlock (lib/rp-mapping.js) is strict: never a string
+                    // number, a NaN, a negative Min lines or a Timeout outside [1, 2147483647] (the largest delay a
+                    // Node timer takes; above it every decode would time out at once) in the flow
+                    const int = (v) => { const n = v === '' ? NaN : Math.trunc(Number(v)); return Number.isFinite(n) ? n : NaN; };
+                    const minLines = int(blockElement.find('.block-rp-minlines').val());
+                    const timeoutMs = int(blockElement.find('.block-rp-timeout').val());
+                    options.effort = blockElement.find('.block-rp-effort').val();
+                    options.directions = blockElement.find('.block-rp-directions').val();
+                    options.addOn = blockElement.find('.block-rp-addon').val();
+                    options.quietZone = blockElement.find('.block-rp-quietzone').val();
+                    options.minLines = minLines >= 0 ? minLines : 0;
+                    options.timeoutMs = timeoutMs >= 1 && timeoutMs <= 2147483647 ? timeoutMs : 5000;
+                    options.tryInvert = blockElement.find('.block-rp-tryinvert').is(':checked');
+                    options.upcaAsEan13 = blockElement.find('.block-rp-upca').is(':checked');
+                    options.code39FullAscii = blockElement.find('.block-rp-code39').is(':checked');
+                    options.checksum = blockElement.find('.block-rp-checksum').is(':checked');
+                }
+
                 blocks.push({
                     decoder: decoder,
                     preprocessing: preprocessing,
@@ -312,10 +404,10 @@
 </script>
 
 <script type="text/html" data-help-name="barcode-reader">
-    <p>A multi-decoder barcode and QR code scanner supporting ZBar, ZXing, and Quagga2 libraries with flexible block-based configuration.</p>
+    <p>A multi-decoder barcode and QR code scanner supporting ZBar, ZXing, Quagga2, Rosepetal Projection and the Rosepetal SDK engine, with flexible block-based configuration.</p>
 
     <h3>Overview</h3>
-    <p>This node provides a flexible, block-based architecture for barcode detection. Each block combines a decoder library (ZBar, ZXing, or Quagga2) with preprocessing options, allowing you to optimize for either maximum detection rate or performance.</p>
+    <p>This node provides a flexible, block-based architecture for barcode detection. Each block combines a decoder (ZBar, ZXing, Quagga2, Rosepetal Projection or the Rosepetal SDK) with preprocessing options, allowing you to optimize for either maximum detection rate or performance.</p>
 
     <h3>Configuration</h3>
     <dl class="message-properties">
@@ -341,13 +433,17 @@
         <li><strong>ZXing</strong>: Comprehensive format support, thorough scan by default</li>
         <li><strong>Quagga2</strong>: JavaScript-based, good for 1D barcodes</li>
         <li><strong>Rosepetal Projection</strong>: for noisy or low-resolution 1D codes that the others miss. Expects a crop of a single barcode. Aligns the bars, averages bands of pixels into clean 1D profiles, decodes each profile with ZBar and ZXing and accepts a value only when enough profiles agree. Slower (tens to a few hundred ms), so use it as a fallback block. 1D only; no preprocessing step (gray and each color channel are tried internally).</li>
+        <li><strong>Rosepetal SDK</strong>: Rosepetal's own 1D engine (EAN/UPC with add-ons, Code 128 / GS1-128, Code 39, Code 93, Codabar, ITF), run as a local <code>rp-barcode serve</code> process shared by every barcode-reader node. Robust by default (dense scans, rows and columns, inverted image); returns the real bar extent, the reading orientation and the number of agreeing scan lines. 1D only: blocks whose Formats hold only 2D codes return nothing without calling the engine. See <em>Rosepetal SDK</em> below for installation and what changes against the other decoders.</li>
     </ul>
 
     <h4>Per-block Options</h4>
     <ul>
-        <li><strong>Formats</strong>: allowlist of barcode symbologies. "All formats" leaves the decoder unrestricted (default). The list shown is filtered to formats the selected decoder actually supports — ZBar covers most 1D + QR/PDF417, ZXing adds DataMatrix and Aztec, Quagga2 and Rosepetal Projection are 1D-only.</li>
+        <li><strong>Formats</strong>: allowlist of barcode symbologies. "All formats" leaves the decoder unrestricted (default). The list shown is filtered to formats the selected decoder actually supports — ZBar covers most 1D + QR/PDF417, ZXing adds DataMatrix and Aztec, Quagga2, Rosepetal Projection and the Rosepetal SDK are 1D-only.</li>
         <li><strong>Min votes</strong> (Rosepetal Projection): profile reads that must agree before a value is reported (default 3). Raise it to cut false reads, lower it for very small crops. Decoding stops early once a value has 3× this many votes and leads every other value by 3×; the vote count at that point is the result's quality.</li>
         <li><strong>Band height</strong> (Rosepetal Projection) is automatic: 12% of the bar height, clamped to 8-48 px, with a second pass at twice that. Advanced: <code>options.stripWidth</code> (px) in the flow JSON overrides it, e.g. smaller on strongly curved surfaces.</li>
+        <li><strong>Effort</strong> (Rosepetal SDK): <code>robust</code> (default, parity with the always-on Try Harder of ZXing blocks) or <code>normal</code> for the fast lane.</li>
+        <li><strong>Directions</strong>, <strong>Add-ons</strong>, <strong>Quiet zone</strong>, <strong>Min lines</strong>, <strong>Timeout</strong> (Rosepetal SDK): scan rows and/or columns (only with Effort <code>normal</code>: <code>robust</code> always scans both); ignore, read (as separate <code>EAN-2</code>/<code>EAN-5</code> symbols) or require EAN/UPC add-ons; tolerant or spec quiet zones; scan lines that must agree (0 = per-symbology default); per-request timeout in ms (default 5000; a timed-out block warns and returns nothing).</li>
+        <li><strong>Flags</strong> (Rosepetal SDK): <em>Try inverted image</em> (default on; only with Effort <code>normal</code>: <code>robust</code> always tries the inverted image); <em>UPC-A as EAN-13</em> (13 digits with a leading 0, the 1.1.3 behaviour: turn it on for templates saved with 1.1.3); <em>Code 39 full ASCII</em> (expand the <code>$ % + /</code> shift pairs as ZXing blocks do: turn it on for templates saved from a ZXing block); <em>Optional checksum</em> (require and verify the Code 39 / ITF / Codabar check character).</li>
     </ul>
 
     <h4>Preprocessing Options</h4>
@@ -369,27 +465,40 @@
     <h3>Output Format</h3>
     <p>For single image input, returns array of detected barcodes:</p>
     <pre>[{
-  format: "QR-Code",
-  value: "decoded_content",
+  format: "EAN-13",
+  value: "4006381333931",
   box: {
     center: { x: 0.5, y: 0.5 },      // Relative coordinates (0-1)
-    size: { width: 0.2, height: 0.2 },
-    angle: 15
+    size: { width: 0.82, height: 0.88 },
+    angle: 0
   },
   corners: [                          // Relative coordinates
-    { x: 0.4, y: 0.4 },
-    { x: 0.6, y: 0.4 },
-    { x: 0.6, y: 0.6 },
-    { x: 0.4, y: 0.6 }
+    { x: 0.11, y: 0.06 },
+    { x: 0.93, y: 0.06 },
+    { x: 0.93, y: 0.94 },
+    { x: 0.11, y: 0.94 }
   ],
-  detectedBy: {
-    blocks: [0, 1],
-    decoders: ["zbar", "zxing"],
-    preprocessing: ["original"]
-  }
+  detectedBy: ["rosepetal_original", "zbar_original"],   // "&lt;decoder&gt;_&lt;preprocessing&gt;" of every block that read this value
+  // the Rosepetal SDK block read it first, so the result also carries:
+  symbology: "EAN13", identifier: "]E0", orientation: 0, lines: 40, confidence: 1, checksum: "valid"
 }]</pre>
 
     <p>For array input, returns nested array: <code>[[img1_results], [img2_results]]</code></p>
+
+    <h3>Rosepetal SDK</h3>
+    <p><strong>Installation.</strong> The engine is the <code>rp-barcode</code> binary of <code>rosepetal-barcode-sdk</code> (0.2.x). The node finds it, in this order, in <code>RP_BARCODE_ENGINE</code> (path to the binary; when set it must point to an executable: the package and <code>PATH</code> are then not searched), in the platform package <code>@rosepetal/barcode-engine-linux-x64</code> / <code>@rosepetal/barcode-engine-linux-arm64</code> (Rosepetal private npm registry; optional dependencies of the <code>@rosepetal/barcode-engine-client</code> package this node depends on, so <code>npm install</code> needs access to that registry) or as <code>rp-barcode</code> in <code>PATH</code>. Without it the block warns once per node and outage (<em>Rosepetal engine not available</em>, with this guidance) and returns nothing; every other block keeps working. The engine is one process per Node-RED, started by the first decode, stopped when the last node with a Rosepetal SDK block closes, and restarted after 1 s if it dies (a binary that fails to start is retried with a growing wait, up to 30 s). The engine version is logged once per node at its first use (<code>Rosepetal engine 0.2.0+&lt;commit&gt; (protocol 1, pid N)</code>); whatever the engine writes to its stderr appears in the Node-RED log as <code>[rp-barcode] …</code> warnings.</p>
+    <p><strong>What changes against the ZBar / ZXing blocks</strong> (same <code>msg</code> contract, fields are only added):</p>
+    <ul>
+        <li><code>corners</code> are the real bar extent in reading order TL, TR, BR, BL, so <code>box.angle</code> is <code>0</code> for a horizontal code (ZXing gives ±90 there) and ±90 for a vertical one; <code>orientation</code> (0/90/180/270, clockwise reading direction) tells 0 from 180.</li>
+        <li><code>detectedBy</code> is an array of <code>"&lt;decoder&gt;_&lt;preprocessing&gt;"</code> strings, one per block that read the value, as always, so a Rosepetal-only flow gives length 1: use <code>lines</code> (agreeing scan lines) and <code>confidence</code> (0-1) as confidence instead of the number of blocks.</li>
+        <li>UPC-A comes out as 12 digits (<code>UPC-A</code>); <em>UPC-A as EAN-13</em> gives the 13-digit form of 1.1.3.</li>
+        <li>UPC-E comes out as its 8 digits (<code>UPC-E</code>), as ZXing prints it; ZBar blocks print the 12-digit UPC-A expansion. Two different values at the same place are one symbol for the spatial filter: the value more blocks agree on wins, else the lowest block's. Adding a Rosepetal SDK block to a ZBar + ZXing flow therefore turns a UPC-E read from <code>012345000065</code> into <code>01234565</code> (a template matching the 12 digits stops matching), and a GS1-128 keeps the form of the first block that read it (ZXing's <code>(10)…</code> or the SDK's <code>\u001d</code> form).</li>
+        <li>Code 39 shift pairs are transmitted as printed unless <em>Code 39 full ASCII</em> is on (ZXing blocks always expand them).</li>
+        <li>GS1-128 values carry the FNC1 separators as the character <code>\u001d</code> (GS) and no leading FNC1; ZXing blocks print the human-readable <code>(01)…(10)…</code> form instead, so templates saved from a ZXing block need re-saving or a match without the parentheses.</li>
+        <li>Format names use the ZXing spelling (<code>EAN-13</code>, <code>UPC-A</code>, <code>Code128</code>, <code>Code39</code>, <code>Code93</code>, <code>Codabar</code>, <code>ITF</code>) plus <code>EAN-2</code> / <code>EAN-5</code> for add-ons read as separate symbols.</li>
+        <li>When several blocks read the same value, the geometry and the extra fields (<code>symbology</code>, <code>identifier</code>, <code>orientation</code>, <code>lines</code>, <code>confidence</code>, <code>checksum</code>) come from the lowest block: put the Rosepetal SDK block first to get <code>orientation</code>, <code>lines</code> and the exact corners in the output.</li>
+        <li>A legacy <code>tryHarder</code> in the flow JSON is ignored by a Rosepetal SDK block (Effort <code>robust</code> covers it); a value outside the vocabulary (e.g. <code>effort: "fast"</code>) fails that block with a warning and returns nothing, the other blocks run.</li>
+    </ul>
 
     <h3>Usage Strategies</h3>
 
@@ -447,6 +556,12 @@
 
         <dt>Duplicate results</dt>
         <dd>This is normal in Parallel mode - duplicates are automatically deduplicated and tracked in "detectedBy"</dd>
+
+        <dt>Rosepetal engine not available</dt>
+        <dd>Install the platform package (<code>@rosepetal/barcode-engine-linux-x64</code> or <code>-linux-arm64</code>, 0.2.x) next to this node or set <code>RP_BARCODE_ENGINE</code> to an executable <code>rp-barcode</code> of SDK 0.2 or later; a protocol mismatch means the binary is too old or too new for this node version. The warning is printed once per node and outage (again only after the engine worked and went away); the block returns nothing until the engine is found.</dd>
+
+        <dt>Rosepetal SDK block times out or reports "engine exited"</dt>
+        <dd>Raise <strong>Timeout</strong> for very large images, or switch <strong>Effort</strong> to <code>normal</code>. After a crash the block returns nothing for 1 s: every crop of the same message that falls inside that wait gets <code>[]</code>, and the first message after the wait is read by the new process. The engine's own messages appear as <code>[rp-barcode] …</code> warnings in the Node-RED log.</dd>
     </dl>
 </script>
 
@@ -686,5 +801,26 @@
 
     .info-box strong {
         color: #333;
+    }
+
+    /* Rosepetal SDK rows */
+    #blocks-container .rosepetal-flags {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 4px 12px;
+        flex: 1;
+        max-width: 360px;
+    }
+
+    #blocks-container .rp-hint {
+        font-size: 11px;
+        color: #888;
+        font-style: italic;
+        margin-left: 8px;
+    }
+
+    #blocks-container .rosepetal-flags .rp-hint-wide {
+        grid-column: 1 / -1;
+        margin-left: 0;
     }
 </style>
