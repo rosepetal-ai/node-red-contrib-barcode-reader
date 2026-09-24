@@ -58,8 +58,8 @@ node -e "console.log(require('./node_modules/@rosepetal/barcode-engine-client').
   (`node_modules/@rosepetal/barcode-engine-linux-x64/bin/rp-barcode`, executable, next to a `package.json` with that
   `name` and `"version": "0.2.0"`; a later `npm install` in the user dir may prune that directory).
 
-- [ ] Restart Node-RED. The log shows no `Rosepetal engine not available` warning at start (the engine starts on the
-      first decode). A `barcode-reader` node's **Decoder** select offers *Rosepetal SDK*. Existing `barcode-reader`
+- [ ] If `addon ok` did not print, do not restart: roll back (step 6). Otherwise restart Node-RED. The log shows no
+      `Rosepetal engine not available` warning at start (the engine starts on the first decode). A `barcode-reader` node's **Decoder** select offers *Rosepetal SDK*. Existing `barcode-reader`
       nodes are untouched: a `zbar`/`zxing`/`quagga2`/`rp-projection` block produces exactly what 1.3.0 did.
 - [ ] Editor check: add a block, choose *Rosepetal SDK*: the rows Effort / Directions / Add-ons / Quiet zone / Min
       lines / Timeout and the four flags appear and disappear with the decoder; type `1e3` in Timeout, deploy, and the

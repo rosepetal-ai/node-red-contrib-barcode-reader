@@ -61,17 +61,22 @@ Entries before 1.4.0 were reconstructed from `git log` and the docs when this fi
 ### Release order
 The `v1.4.0` tag must wait for: (1) `@rosepetal/barcode-engine-client@0.2.x` on npmjs and the engine packages on the
 private registry, both published by the SDK repository's release; (2) `package-lock.json` regenerated against the
-published client (`npm install --package-lock-only --no-audit --no-fund`) and committed, so that `npm ci` works. A tag
+published client (`npm install --package-lock-only --no-audit --no-fund --@rosepetal:registry=https://registry.npmjs.org/`)
+and committed, so that `npm ci` works. A tag
 before (1) would publish a 1.4.0 that nobody can install (E404 on the client, palette included). The tag itself
 publishes the 1.4.0 addon packages before the main package (`build-prebuild.yml`). Until then the lock regenerated in
 (2) holds the three addon entries as version-less `optional: true` placeholders (npm prints no warning) and `npm ci`
 works (`test.yml` installs the newest published addon meanwhile). (3) Once the tag has published them, regenerate the
-lock again (`npm install --package-lock-only --no-audit --no-fund`) and commit it: with the placeholders `npm ci` fails
-with `EUSAGE … Invalid: lock file's …-linux-x64@ does not satisfy …@1.4.0`, and `test.yml` stays red on `main` until
-then. ⚠️ `build-prebuild.yml` publishes the main package even when one platform addon failed to build (its `publish`
-job runs with `always()` and skips a missing `addon.node`): before the main package goes out, check that all three
-1.4.0 addon packages exist on npmjs (`npm view @rosepetal/node-red-contrib-barcode-reader-<platform>@1.4.0 version`),
-or the users of that platform fall back to a source build.
+lock again (`npm install --package-lock-only --no-audit --no-fund --@rosepetal:registry=https://registry.npmjs.org/`)
+and commit it: with the placeholders `npm ci` fails with `EUSAGE … Invalid: lock file's …-linux-x64@ does not satisfy
+…@1.4.0`, and `test.yml` stays red on `main` until then. After (2) and (3), `grep pkg.dev package-lock.json` must print
+nothing (a `@rosepetal:registry` line in `~/.npmrc` would write private-registry URLs into the lock).
+⚠️ `build-prebuild.yml` publishes the main package even when one platform addon failed to build: its `publish` job
+runs with `always()`, skips a missing `addon.node` and publishes the main package in the next step. After the tag's
+run, check that all three 1.4.0 addon packages exist on npmjs
+(`npm view @rosepetal/node-red-contrib-barcode-reader-<platform>@1.4.0 version`). If one is missing, use *Re-run
+failed jobs* on that run (both publish steps skip what is already on npmjs), then regenerate the lock again as in (3).
+Until then the users of that platform fall back to a source build.
 
 ## [1.3.0] - 2026-09-24
 
