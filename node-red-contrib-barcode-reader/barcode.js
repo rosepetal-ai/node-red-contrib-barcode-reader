@@ -252,7 +252,7 @@ module.exports = function(RED) {
                     rawResults = await decodeWithQuagga(preprocessed, block, node, Quagga);
                     break;
                 case 'rosepetal':
-                    rawResults = await decodeWithRosepetal(preprocessed, block, node);
+                    rawResults = await decodeWithRosepetal(preprocessed, block, blockIndex, node);
                     break;
                 default:
                     throw new Error(`Unknown decoder: ${block.decoder}`);
@@ -338,14 +338,17 @@ module.exports = function(RED) {
          * An engine that cannot run (not installed, wrong protocol, or inside the wait after a failure) warns once
          * per node and yields []; any other failure (invalid input, timeout, crash, overload) throws and the caller
          * warns "Block i (rosepetal) failed: ...". Formats with nothing the SDK reads (2D only) yield [] without a call.
+         * After the node closed (a redeploy with this message in flight) the block yields [] with a debug line, never
+         * a warn: nothing of the old node may restart the engine.
          */
-        async function decodeWithRosepetal(preprocessed, block, node) {
+        async function decodeWithRosepetal(preprocessed, block, blockIndex, node) {
             const { decodeOptions, skip, timeoutMs } = rp.optionsFromBlock(block);
             if (skip) {
                 return [];   // Formats holds nothing the SDK reads (2D only): like Quagga2, no call
             }
             if (rpClosed) {
-                return [];   // the node closed while this message was in flight: nothing may restart the engine
+                node.debug(`Block ${blockIndex} (rosepetal) skipped: the node closed while this message was in flight`);
+                return [];
             }
             const engine = rp.getEngine();
             try {
