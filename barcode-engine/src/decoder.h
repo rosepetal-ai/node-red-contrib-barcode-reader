@@ -13,8 +13,8 @@ std::string decode_zxing(const cv::Mat& grayscale,
 // (BGR or grayscale) crop of a single barcode: aligns the bars, averages bands
 // into 1D profiles, decodes each profile with ZBar and ZXing and votes.
 struct ProjectionOptions {
-  int minVotes = 3;     // profile reads of the same value needed to accept it
-  int stripWidth = 16;  // band height in px; a second pass uses 2x this width
+  int minVotes = 3;    // profile reads of the same value needed to accept it
+  int stripWidth = 0;  // band height in px; 0 = auto (12% of bar height, 8-48 px)
 };
 std::string decode_projection(const cv::Mat& bgr,
                               const std::vector<std::string>& formats,

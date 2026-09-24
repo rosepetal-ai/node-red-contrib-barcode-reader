@@ -119,6 +119,8 @@ static vector<Decoded> zbarSymbols(const Mat& gray, const vector<string>& format
   }
   if (rowsOnly) {
     scanner.set_config(static_cast<zbar_symbol_type_t>(0), ZBAR_CFG_X_DENSITY, 0);
+    // Expanded DataBar trips a ZBar assertion on synthetic profiles; not needed here
+    scanner.set_config(ZBAR_DATABAR_EXP, ZBAR_CFG_ENABLE, 0);
   }
 
   Image image(gray.cols, gray.rows, "Y800", (uchar *)gray.data, gray.cols * gray.rows);
@@ -216,6 +218,9 @@ constexpr int kProfileRows = 12;  // height of the synthetic profile image
 constexpr int kQuietZone = 40;    // white margin (px) on each side of the profile
 constexpr double kSharpenSigma = 1.2;   // unsharp mask on the profile, second read
 constexpr double kSharpenAmount = 1.5;
+constexpr double kAutoBandShare = 0.12; // auto band height as a share of bar height
+constexpr int kAutoBandMin = 8, kAutoBandMax = 48;
+constexpr int kEarlyExitFactor = 3;     // leader >= 3x minVotes and 3x the runner-up
 
 // Dominant gradient direction in degrees, (-90, 90]. Bars run perpendicular to it.
 double gradientAngle(const Mat& gray) {
@@ -281,6 +286,36 @@ vector<Mat> channelPlanes(const Mat& bgr) {
   return planes;
 }
 
+// Band height: explicit px, or a share of the bar height clamped to a
+// range that still averages enough pixels without smearing curved bars
+int bandHeight(int h, const ProjectionOptions& opts) {
+  int sw = opts.stripWidth > 0 ? opts.stripWidth
+                               : static_cast<int>(lround(h * kAutoBandShare));
+  return min(max(sw, kAutoBandMin), min(kAutoBandMax, h));
+}
+
+// Band start rows, centre first: the middle of a code is usually the
+// cleanest, so the early exit triggers sooner
+vector<int> bandStarts(int h, int sw) {
+  vector<int> starts;
+  for (int y0 = 0; y0 + sw <= h; y0 += max(1, sw / 2)) starts.push_back(y0);
+  const double mid = (h - sw) / 2.0;
+  sort(starts.begin(), starts.end(),
+       [mid](int a, int b) { return fabs(a - mid) < fabs(b - mid); });
+  return starts;
+}
+
+// Stop once the leader is well past the threshold and clearly ahead
+bool decided(const map<string, Candidate>& votes, int minVotes) {
+  int lead = 0, second = 0;
+  for (const auto& kv : votes) {
+    int v = kv.second.votes;
+    if (v > lead) { second = lead; lead = v; }
+    else if (v > second) second = v;
+  }
+  return lead >= kEarlyExitFactor * minVotes && second * kEarlyExitFactor <= lead;
+}
+
 }  // namespace
 
 string decode_projection(const cv::Mat& bgr,
@@ -292,20 +327,33 @@ string decode_projection(const cv::Mat& bgr,
     return "{\"results\": []}";
   }
 
-  Size aligned;
-  Mat M = alignmentTransform(planes[0], aligned);
-  const int w = aligned.width, h = aligned.height;
-  const int stripWidth = max(1, opts.stripWidth);
+  Size size;
+  Mat M = alignmentTransform(planes[0], size);
+  const int w = size.width, h = size.height;
 
-  map<string, Candidate> votes;  // keyed by decoded value
+  // Aligned planes, highest contrast first
+  vector<pair<double, Mat>> aligned;
   for (const Mat& plane : planes) {
     Mat img;
-    warpAffine(plane, img, M, aligned, INTER_LINEAR, BORDER_REPLICATE);
+    warpAffine(plane, img, M, size, INTER_LINEAR, BORDER_REPLICATE);
+    Scalar mean, stddev;
+    meanStdDev(img, mean, stddev);
+    aligned.emplace_back(stddev[0], img);
+  }
+  sort(aligned.begin(), aligned.end(),
+       [](const auto& a, const auto& b) { return a.first > b.first; });
 
-    for (int sw : { stripWidth, 2 * stripWidth }) {
-      sw = min(sw, h);
-      const int step = max(1, sw / 2);
-      for (int y0 = 0; y0 + sw <= h; y0 += step) {
+  // Base band pass first; the double-height pass only if still undecided
+  const int base = bandHeight(h, opts);
+  vector<int> widths{ base };
+  if (2 * base <= h) widths.push_back(2 * base);
+
+  map<string, Candidate> votes;  // keyed by decoded value
+  bool done = false;
+  for (int sw : widths) {
+    for (const auto& plane : aligned) {
+      const Mat& img = plane.second;
+      for (int y0 : bandStarts(h, sw)) {
         Mat profile, blurred;
         reduce(img.rowRange(y0, y0 + sw), profile, 0, REDUCE_AVG, CV_32F);
         GaussianBlur(profile, blurred, Size(0, 0), kSharpenSigma);
@@ -333,8 +381,13 @@ string decode_projection(const cv::Mat& bgr,
           c.yMin = min(c.yMin, y0);
           c.yMax = max(c.yMax, y0 + sw - 1);
         }
+
+        done = decided(votes, opts.minVotes);
+        if (done) break;
       }
+      if (done) break;
     }
+    if (done) break;
   }
 
   // Keep values with enough agreement, strongest first

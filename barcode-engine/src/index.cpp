@@ -517,8 +517,8 @@ Napi::Value decoder_projection(const Napi::CallbackInfo& info) {
   if (IsValidNumber(optObj.Get("stripWidth"))) {
     opts.stripWidth = optObj.Get("stripWidth").As<Napi::Number>().Int32Value();
   }
-  if (opts.minVotes < 1 || opts.stripWidth < 1) {
-    Napi::Error::New(env, "minVotes and stripWidth must be positive integers").ThrowAsJavaScriptException();
+  if (opts.minVotes < 1 || opts.stripWidth < 0) {
+    Napi::Error::New(env, "minVotes must be >= 1 and stripWidth >= 0 (0 = auto)").ThrowAsJavaScriptException();
     return env.Null();
   }
 

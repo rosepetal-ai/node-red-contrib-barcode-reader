@@ -260,7 +260,7 @@ module.exports = function(RED) {
             const formats = block.options?.formats || [];
             const options = {
                 minVotes: block.options?.minVotes || 3,
-                stripWidth: block.options?.stripWidth || 16
+                stripWidth: block.options?.stripWidth || 0  // 0 = auto
             };
             const resultJson = await barcode.decode_projection(input, formats, options);
             const parsed = JSON.parse(resultJson);

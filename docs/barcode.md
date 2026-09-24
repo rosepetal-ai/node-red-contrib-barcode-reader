@@ -141,7 +141,8 @@ Each block represents a detection attempt with specific configuration. Blocks ca
 - Gray plus each color channel are tried, so chromatic aberration on one channel does not matter
 - No preprocessing step (the Preprocessing selector is hidden); 1D symbologies only
 - Slower (roughly 50-300 ms depending on crop size), so use it as a fallback block in Sequential mode
-- Options: **Min votes** (default 3; the vote count is returned as the result's quality) and **Strip width** (band height in px, default 16; a second pass uses twice that)
+- Decoding stops early once a value has 3× **Min votes** and leads every other value by 3×, so clean crops return in a fraction of the full time; crops with no readable code always pay the full cost
+- Options: **Min votes** (default 3; the vote count when decoding stopped is returned as the result's quality) and **Strip width** (band height in px; empty = auto, 12% of the bar height clamped to 8-48 px; a second pass uses twice that)
 - The reported box is the extent of the profiles that agreed, mapped back to the crop; when another block also reads the same value, that block's box is kept
 
 #### Preprocessing Options
