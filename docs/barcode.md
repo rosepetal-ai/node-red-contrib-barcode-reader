@@ -142,7 +142,8 @@ Each block represents a detection attempt with specific configuration. Blocks ca
 - No preprocessing step (the Preprocessing selector is hidden); 1D symbologies only
 - Slower (roughly 50-300 ms depending on crop size), so use it as a fallback block in Sequential mode
 - Decoding stops early once a value has 3× **Min votes** and leads every other value by 3×, so clean crops return in a fraction of the full time; crops with no readable code always pay the full cost
-- Options: **Min votes** (default 3; the vote count when decoding stopped is returned as the result's quality) and **Strip width** (band height in px; empty = auto, 12% of the bar height clamped to 8-48 px; a second pass uses twice that)
+- Option: **Min votes** (default 3; the vote count when decoding stopped is returned as the result's quality)
+- Band height is automatic: 12% of the bar height clamped to 8-48 px, with a second pass at twice that. Advanced: `options.stripWidth` (px) in the flow JSON overrides it; it is not exposed in the editor
 - The reported box is the extent of the profiles that agreed, mapped back to the crop; when another block also reads the same value, that block's box is kept
 
 #### Preprocessing Options

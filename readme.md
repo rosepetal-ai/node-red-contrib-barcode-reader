@@ -153,7 +153,7 @@ Each block specifies:
 - For noisy or low-resolution 1D codes the other decoders miss (down to ~1.5 px per module)
 - Expects a crop of a single barcode (e.g. a detector output); orientation is estimated automatically
 - Straightens the crop, averages bands of pixels into clean 1D profiles, reads each profile with ZBar and ZXing and accepts a value only when at least `minVotes` profiles agree (default 3). Stops early once a value has 3× `minVotes` and leads every other value by 3×; the vote count at that point is returned as the result quality
-- Band height is automatic (12% of the bar height, 8-48 px); `stripWidth` overrides it in px
+- Band height is automatic (12% of the bar height, 8-48 px). Advanced: `options.stripWidth` in the flow JSON overrides it in px (not exposed in the editor)
 - Gray plus each color channel are tried, so chromatic aberration on one channel is harmless
 - No preprocessing step and 1D formats only; slower, so use it as a fallback block
 

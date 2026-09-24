@@ -146,11 +146,6 @@
                                 <input type="number" class="block-min-votes" min="1" step="1" value="${block.options?.minVotes || 3}">
                             </div>
 
-                            <div class="block-form-row projection-row">
-                                <label>Strip width (px)</label>
-                                <input type="number" class="block-strip-width" min="0" step="1" placeholder="auto" value="${block.options?.stripWidth || ''}">
-                            </div>
-
                             <div class="block-form-row formats-row">
                                 <label>Formats</label>
                                 <div class="formats-controls">
@@ -170,6 +165,9 @@
 
                 blocksContainer.append(blockHTML);
                 const blockElement = $(`[data-block-id="${blockId}"]`);
+                if (block.options?.stripWidth) {
+                    blockElement.data('stripWidth', block.options.stripWidth);
+                }
 
                 // Initial formats grid for this block's decoder
                 renderFormatsGrid(blockElement, block.decoder || 'zbar', initialSelected);
@@ -242,7 +240,10 @@
 
                 if (decoder === 'rp-projection') {
                     options.minVotes = parseInt(blockElement.find('.block-min-votes').val(), 10) || 3;
-                    options.stripWidth = parseInt(blockElement.find('.block-strip-width').val(), 10) || 0;  // 0 = auto
+                    // stripWidth is auto; a value set in the flow JSON is still honoured
+                    if (blockElement.data('stripWidth')) {
+                        options.stripWidth = blockElement.data('stripWidth');
+                    }
                 }
 
                 blocks.push({
@@ -346,7 +347,7 @@
     <ul>
         <li><strong>Formats</strong>: allowlist of barcode symbologies. "All formats" leaves the decoder unrestricted (default). The list shown is filtered to formats the selected decoder actually supports — ZBar covers most 1D + QR/PDF417, ZXing adds DataMatrix and Aztec, Quagga2 and Rosepetal Projection are 1D-only.</li>
         <li><strong>Min votes</strong> (Rosepetal Projection): profile reads that must agree before a value is reported (default 3). Raise it to cut false reads, lower it for very small crops. Decoding stops early once a value has 3× this many votes and leads every other value by 3×; the vote count at that point is the result's quality.</li>
-        <li><strong>Strip width</strong> (Rosepetal Projection): height in px of the averaged bands; a second pass uses twice that. Leave empty for auto (12% of the bar height, clamped to 8-48 px). Set it by hand only if auto misbehaves: larger is cleaner and faster on flat labels, smaller tolerates curved surfaces better.</li>
+        <li><strong>Band height</strong> (Rosepetal Projection) is automatic: 12% of the bar height, clamped to 8-48 px, with a second pass at twice that. Advanced: <code>options.stripWidth</code> (px) in the flow JSON overrides it, e.g. smaller on strongly curved surfaces.</li>
     </ul>
 
     <h4>Preprocessing Options</h4>
