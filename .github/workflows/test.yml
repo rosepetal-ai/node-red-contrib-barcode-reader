@@ -1,0 +1,158 @@
+# Tests of node-red-contrib-barcode-reader (rosepetal-barcode-sdk docs/plans/fase2/00-overview.md §5.2).
+#
+# - The fake-engine tests (test/{mapping,editor,node,regression}.test.js) always run. They need the prebuilt addon:
+#   npm ci installs the version pinned in optionalDependencies; when that version is not on npmjs yet (a release that
+#   bumps the addon packages before its tag publishes them) the newest published one is installed instead, since the
+#   C++ does not change between such releases.
+# - The real-binary tests (test/e2e.test.js) need the engine package from Rosepetal's private Artifact Registry and skip
+#   without the GCP_SA_KEY secret (forks, pull requests from forks: the secret is not exposed to them).
+# - Until @rosepetal/barcode-engine-client (published by the SDK repository, rosepetal-barcode-sdk/clients/node) is on
+#   npmjs, npm ci cannot resolve the node's dependency: the job says so and ends without running the tests instead of
+#   failing on an E404. Release order (CHANGELOG.md): client on npmjs -> regenerate package-lock.json -> tag v1.4.0.
+# - workflow_dispatch with clean_install_version runs only the post-release check: the published package installs in a
+#   clean node:22 container with no access to the private registry, the addon loads, the engine package is absent and
+#   the client reports it (a rosepetal block then warns once and returns []; every other decoder works).
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      clean_install_version:
+        description: 'Published version to install in a clean node:22 container without private registry access; empty = run the tests'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  ENGINE_REGISTRY: europe-southwest1-npm.pkg.dev/rosepetal-artifact/private-node-packages
+  CLIENT: '@rosepetal/barcode-engine-client'
+  ENGINE_PACKAGE: '@rosepetal/barcode-engine-linux-x64'
+  ADDON_PACKAGE: '@rosepetal/node-red-contrib-barcode-reader-linux-x64'
+
+jobs:
+  test:
+    if: github.event_name != 'workflow_dispatch' || inputs.clean_install_version == ''
+    runs-on: ubuntu-22.04
+    env:
+      HAS_GCP_KEY: ${{ secrets.GCP_SA_KEY != '' }}   # the secrets context is not allowed in a step `if`
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22   # node-red 5.0.7 (devDependency) declares engines.node >=22.9; the runtime floor stays >=18
+          cache: npm
+
+      - name: Engine client on npmjs? (npm ci cannot run before the SDK publishes it)
+        id: client
+        run: |
+          range="$(node -p "require('./package.json').dependencies['$CLIENT']")"
+          if version="$(npm view "$CLIENT@$range" version 2>/dev/null | tail -n 1)" && [ -n "$version" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "$CLIENT@$range resolves on npmjs ($version)"
+            if ! grep -q '"node_modules/@rosepetal/barcode-engine-client"' package-lock.json; then
+              echo "::error::package-lock.json has no entry for $CLIENT: run 'npm install --package-lock-only --no-audit --no-fund' and commit the lock (release order in CHANGELOG.md)"
+              exit 1
+            fi
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::$CLIENT@$range is not on npmjs yet: the SDK repository publishes it (rosepetal-barcode-sdk/clients/node). Nothing to install, tests skipped."
+            echo "tests skipped: $CLIENT@$range is not published yet (see CHANGELOG.md, release order)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: npm ci (the client's private optionalDependencies, the engine packages, are skipped with a warning)
+        if: steps.client.outputs.available == 'true'
+        run: npm ci --no-audit --no-fund
+
+      - name: Prebuilt addon (the pinned version, or the newest published one when the pinned one does not exist yet)
+        if: steps.client.outputs.available == 'true'
+        run: |
+          want="$(node -p "require('./package.json').optionalDependencies['$ADDON_PACKAGE']")"
+          if node -e "require('./node-red-contrib-barcode-reader/lib/cpp-bridge.js')" 2>/dev/null; then
+            echo "$ADDON_PACKAGE@$want installed by npm ci"
+            exit 0
+          fi
+          version="$want"
+          if ! npm view "$ADDON_PACKAGE@$version" version >/dev/null 2>&1; then
+            version="$(npm view "$ADDON_PACKAGE" version)"
+            echo "::notice::$ADDON_PACKAGE@$want is not published yet; testing with $ADDON_PACKAGE@$version (the addon is unchanged in this release)"
+          fi
+          npm install --no-save --no-audit --no-fund "$ADDON_PACKAGE@$version"
+          node -e "require('./node-red-contrib-barcode-reader/lib/cpp-bridge.js'); console.log('addon loaded')"
+
+      - uses: google-github-actions/auth@v2
+        if: steps.client.outputs.available == 'true' && env.HAS_GCP_KEY == 'true'
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.client.outputs.available == 'true' && env.HAS_GCP_KEY == 'true'
+
+      - name: Engine package from the private registry -> RP_BARCODE_ENGINE
+        if: steps.client.outputs.available == 'true' && env.HAS_GCP_KEY == 'true'
+        run: |
+          set -euo pipefail
+          # The engine packages are optionalDependencies of the client (D9), not of the node: their range is the client's
+          range="$(node -p "require('$CLIENT/package.json').optionalDependencies['$ENGINE_PACKAGE']")"
+          # A throwaway npmrc with an ephemeral token, deleted on exit: nothing lands in the runner's user config
+          npmrc="$RUNNER_TEMP/npmrc"
+          trap 'rm -f "$npmrc"' EXIT
+          umask 077
+          printf '//%s/:_authToken=%s\n' "$ENGINE_REGISTRY" "$(gcloud auth print-access-token)" > "$npmrc"
+          # Outside the project on purpose: an install inside it would reconcile the whole tree against the private
+          # registry and prune the addon installed with --no-save above (its optional edge 404s there)
+          NPM_CONFIG_USERCONFIG="$npmrc" npm install --prefix "$RUNNER_TEMP/engine" --no-audit --no-fund \
+            --registry="https://$ENGINE_REGISTRY/" "$ENGINE_PACKAGE@$range"
+          bin="$RUNNER_TEMP/engine/node_modules/$ENGINE_PACKAGE/bin/rp-barcode"
+          test -x "$bin"
+          "$bin" version
+          echo "RP_BARCODE_ENGINE=$bin" >> "$GITHUB_ENV"
+
+      - name: Guard - the prebuilt addon is still installed (the node and regression tests would silently skip without it)
+        if: steps.client.outputs.available == 'true'
+        run: node -e "require('./node-red-contrib-barcode-reader/lib/cpp-bridge.js'); console.log('addon loaded')"
+
+      - name: npm test (the real-binary tests skip when RP_BARCODE_ENGINE is unset)
+        if: steps.client.outputs.available == 'true'
+        run: npm test
+
+      - name: Summary
+        if: steps.client.outputs.available == 'true'
+        run: |
+          echo "engine: ${RP_BARCODE_ENGINE:-not installed (GCP_SA_KEY absent), real-binary tests skipped}" >> "$GITHUB_STEP_SUMMARY"
+
+  clean-install:
+    if: github.event_name == 'workflow_dispatch' && inputs.clean_install_version != ''
+    runs-on: ubuntu-22.04
+    container: node:22
+    env:
+      V: ${{ inputs.clean_install_version }}
+    steps:
+      - name: Install the public package with no access to the private registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset RP_BARCODE_ENGINE
+          mkdir -p /w && cd /w && npm init -y >/dev/null
+          npm install --no-audit --no-fund "@rosepetal/node-red-contrib-barcode-reader@$V" 2>&1 | tee install.log
+          pkg=/w/node_modules/@rosepetal/node-red-contrib-barcode-reader
+          test "$(node -p "require('$pkg/package.json').version")" = "$V"
+          test -e "node_modules/$CLIENT/package.json" && echo "client installed: $(node -p "require('$CLIENT/package.json').version")"
+          test -e "node_modules/$ADDON_PACKAGE/lib/addon.node" && echo "addon package installed"
+          test ! -e "node_modules/$ENGINE_PACKAGE" && echo "engine package absent, as expected"
+          grep -Ei 'optional|E404|barcode-engine' install.log || echo "(npm printed no optional-dependency warning; the absence check is the assertion)"
+          node -e "
+            const { resolveBinary } = require('$CLIENT');
+            let r = null;
+            try { r = resolveBinary(); } catch (err) { console.log('resolveBinary threw', err.code + ':', err.message); if (err.code !== 'unavailable') process.exit(1); }
+            if (r && r.path) { console.error('unexpected engine at', r.path, 'from', r.source); process.exit(1); }
+            console.log('a rosepetal block would warn \"Rosepetal engine not available\" once and return []');"
+          node -e "require('$pkg/node-red-contrib-barcode-reader/lib/cpp-bridge.js'); console.log('addon loaded: zbar/zxing/quagga2/rp-projection blocks work')"
+          node -e "const m = require('$pkg/node-red-contrib-barcode-reader/barcode.js'); if (typeof m !== 'function') process.exit(1); console.log('node module loads (palette entry ok)')"
+          echo "clean install of @rosepetal/node-red-contrib-barcode-reader@$V: ok (engine absent, addon and client present)" >> "$GITHUB_STEP_SUMMARY"
