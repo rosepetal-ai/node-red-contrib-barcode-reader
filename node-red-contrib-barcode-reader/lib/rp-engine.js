@@ -62,10 +62,11 @@ function executableProblem(file) {
     return null;
 }
 
-// The binary of the platform package, looked up along this module's node_modules chain (the order require uses),
-// without require.resolve: the file is not JavaScript and the package may restrict its `exports`.
-function packageBinary(pkg) {
-    for (const dir of module.paths) {
+// The binary of the platform package, looked up along `paths` (this module's node_modules chain by default, the order
+// require uses) without require.resolve: the file is not JavaScript, the package may restrict its `exports`, and
+// require caches its lookups for the life of the process.
+function packageBinary(pkg, paths) {
+    for (const dir of paths) {
         if (fs.existsSync(path.join(dir, pkg, 'package.json'))) return path.join(dir, pkg, 'bin', 'rp-barcode');
     }
     return null;
@@ -75,20 +76,23 @@ function packageBinary(pkg) {
  * Where the engine binary is: RP_BARCODE_ENGINE (explicit: when set and unusable this fails, it never falls
  * back), then the platform package's bin/rp-barcode, then rp-barcode in PATH. The binary runs as `<path> serve`.
  *
+ * @param {{paths?: string[]}} [options] node_modules directories searched for the platform package (default: this
+ *   module's chain, as require would); the tests point it at a temporary directory
  * @returns {{path: string, source: string}} source: 'RP_BARCODE_ENGINE' | the package name | 'PATH'
  * @throws {EngineError} code 'unavailable', the message lists every place that was tried
  */
-function resolveBinary() {
+function resolveBinary({ paths = module.paths } = {}) {
     const fromEnv = process.env.RP_BARCODE_ENGINE;
     if (fromEnv) {
-        const problem = executableProblem(fromEnv);
+        const file = path.resolve(fromEnv);          // checked and spawned as the same file, never through PATH
+        const problem = executableProblem(file);
         if (problem) throw new EngineError('unavailable', `RP_BARCODE_ENGINE ${problem}`);
-        return { path: fromEnv, source: 'RP_BARCODE_ENGINE' };
+        return { path: file, source: 'RP_BARCODE_ENGINE' };
     }
     const problems = [];
     const pkg = ENGINE_PACKAGES[platformId()];
     if (pkg) {
-        const file = packageBinary(pkg);
+        const file = packageBinary(pkg, paths);
         if (file) {
             const problem = executableProblem(file);
             if (!problem) return { path: file, source: pkg };
@@ -113,6 +117,10 @@ const DEFAULTS = {
     args: ['serve'],
     env: null,                  // null: process.env
     maxQueue: 128,              // requests in flight before `overloaded` (overview §4.3)
+    maxBufferedBytes: 256 << 20, // bytes still unwritten to the engine's stdin before `overloaded`: 256 MiB, the
+                                //   protocol's default maxPayload, so one frame of any legal size fits an idle pipe and
+                                //   more than that means the engine is not reading (a timed-out request leaves
+                                //   `pending`, but its bytes stay in the pipe buffer until the engine takes them)
     helloTimeoutMs: 5000,
     defaultTimeoutMs: DEFAULT_TIMEOUT_MS,
     backoff: { initialMs: 1000, maxMs: 30000 },
@@ -126,7 +134,8 @@ function exitDescription(code, signal) {
 
 class Engine extends EventEmitter {
     /**
-     * @param {object} [options] see DEFAULTS; `command` null resolves the binary at every start
+     * @param {object} [options] see DEFAULTS; `command` null resolves the binary at every start. Two gates make
+     *   `overloaded`: `maxQueue` requests in flight and `maxBufferedBytes` not yet taken by the engine's stdin.
      */
     constructor(options = {}) {
         super();
@@ -158,7 +167,9 @@ class Engine extends EventEmitter {
         for (const [key, value] of Object.entries(rest)) {
             if (value !== undefined) this.opts[key] = value;
         }
-        if (backoff) Object.assign(this.opts.backoff, backoff);
+        for (const [key, value] of Object.entries(backoff || {})) {
+            if (value !== undefined) this.opts.backoff[key] = value;
+        }
         this.resetBackoff();
         return this;
     }
@@ -291,6 +302,7 @@ class Engine extends EventEmitter {
                     // Never let a listener throw: FrameParser would drop the rest of the chunk. Route it to the request.
                     const entry = this._settle(header.id);
                     if (entry) entry.reject(err);
+                    else process.emitWarning(err);
                 }
             });
             child.stdin.on('error', () => { /* EPIPE after the child died: the close handler rejects the requests */ });
@@ -394,6 +406,12 @@ class Engine extends EventEmitter {
             } catch (err) {
                 return reject(new EngineError('invalid_input', err.message));
             }
+            const bytes = frame[0].length + frame[1].length;
+            const buffered = this.child.stdin.writableLength;
+            if (buffered + bytes > this.opts.maxBufferedBytes) {
+                return reject(new EngineError('overloaded',
+                    `engine overloaded (${buffered} bytes still unwritten, ${bytes} more would exceed ${this.opts.maxBufferedBytes})`));
+            }
             const timer = setTimeout(() => {
                 if (this._settle(id)) reject(new EngineError('timeout', `engine timeout after ${timeoutMs} ms`));
             }, timeoutMs);
@@ -446,7 +464,8 @@ class Engine extends EventEmitter {
     }
 
     /**
-     * Drain (≤ drainMs) → shutdown → SIGTERM → SIGKILL, exitMs between the steps (≤ 4 s with the defaults).
+     * Drain (≤ drainMs) → shutdown → SIGTERM → SIGKILL, exitMs between the steps (≤ 4 s with the defaults; one more
+     * exitMs only when something else keeps the child's pipes open after the SIGKILL).
      * Resolves when the child is gone; whatever was still pending rejects with `exited`. Idempotent; a no-op
      * when nothing runs.
      */
@@ -454,6 +473,7 @@ class Engine extends EventEmitter {
         if (this.stopping) return this.stopping;
         if (this.starting) {
             try { await this.starting; } catch (_) { /* the start failed: the child, if any, is being killed */ }
+            if (this.stopping) return this.stopping;             // another stop() got here first during that wait
         }
         const child = this.child;
         if (!child) return;
@@ -480,7 +500,11 @@ class Engine extends EventEmitter {
             try { child.kill('SIGTERM'); } catch (_) { /* already gone */ }
             if (!(await gone(this.opts.exitMs))) {
                 try { child.kill('SIGKILL'); } catch (_) { /* already gone */ }
-                await exited;
+                if (!(await gone(this.opts.exitMs))) {
+                    // 'close' also waits for every holder of the pipes (a wrapper that forked the binary): let ours go
+                    for (const stream of [child.stdin, child.stdout, child.stderr]) stream.destroy();
+                    await exited;
+                }
             }
         }
         this._rejectAll(new EngineError('exited', 'engine stopped'));

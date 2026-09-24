@@ -156,7 +156,8 @@ test('decode(): a payload over hello.limits.maxPayload is refused with invalid_i
     const engine = fake({ FAKE_MAX_PAYLOAD: '1000' });
     await engine.start();
     assert.equal(engine.hello.limits.maxPayload, 1000);
-    // The fake would answer this one fine (347·68·1 bytes match): the rejection can only be the client's
+    // Had the frame been sent, the fake's own parser (maxPayload 1000) would have answered bad_frame and exited 3:
+    // a still-running engine after the rejection proves nothing was written
     await rejects(engine.decode(GRAY, PIXELS, {}), 'invalid_input', /23596 bytes exceeds the engine limit of 1000 bytes/);
     assert.equal(engine.pending.size, 0);
     assert.ok(engine.running);
@@ -287,8 +288,9 @@ test('stop(): waits for the request in flight (drain), then shutdown → exit 0'
 
 test('stop(): the drain gives up after drainMs, the request in flight rejects with exited, nothing is left pending', async () => {
     const engine = fake({ FAKE_DELAY_MS: '5000' }, { drainMs: 200 });
+    await engine.start();                                        // the cold start is not part of what is measured
     const outcome = engine.decode(GRAY, PIXELS, {}).then(() => null, (err) => err);
-    await sleep(50);
+    for (let i = 0; i < 200 && engine.pending.size === 0; i++) await sleep(5);
     assert.equal(engine.pending.size, 1);
     const t0 = Date.now();
     await engine.stop();
@@ -314,13 +316,48 @@ test('stop(): an engine that ignores shutdown and SIGTERM ends with SIGKILL with
     assert.equal(engine.running, false);
 });
 
+test('stalled engine: unwritten stdin bytes are bounded by maxBufferedBytes, the excess is overloaded, stop() ends with SIGKILL', async () => {
+    const MiB = 1024 * 1024;
+    // A pipe write counts in writableLength until the whole chunk is in the kernel, so with a deaf reader every frame
+    // counts fully from its first byte: four 1 MiB frames plus their headers fit, the fifth cannot
+    const budget = 4 * MiB + 4096;
+    const engine = fake({ FAKE_STALL: '1', FAKE_IGNORE_STOP: '1' }, { maxQueue: 4, maxBufferedBytes: budget, exitMs: 200 });
+    await engine.start();
+    const image = { width: 1024, height: 1024, channels: 1, colorSpace: 'GRAY' };
+    const payload = Buffer.alloc(MiB, 0x80);
+    const rounds = [];
+    const messages = [];
+    for (let round = 0; round < 5; round++) {
+        const settled = await Promise.allSettled(Array.from({ length: 4 }, () => engine.decode(image, payload, {}, { timeoutMs: 30 })));
+        rounds.push(settled.map((r) => (r.status === 'rejected' ? r.reason.code : 'ok')));
+        for (const r of settled) if (r.status === 'rejected') messages.push(r.reason.message);
+        assert.equal(engine.pending.size, 0, `round ${round}: pending`);   // every timed-out request left the queue…
+        assert.ok(engine.child.stdin.writableLength <= budget,               // …but its bytes stay in the pipe: bounded
+            `round ${round}: ${engine.child.stdin.writableLength} bytes still unwritten`);
+    }
+    assert.deepEqual(rounds[0], ['timeout', 'timeout', 'timeout', 'timeout']);   // the budget takes the first 4 MiB
+    const later = rounds.slice(1).flat();
+    assert.ok(later.every((c) => c === 'overloaded' || c === 'timeout'), JSON.stringify(rounds));
+    assert.ok(later.filter((c) => c === 'overloaded').length >= 12, JSON.stringify(rounds));   // ≥ 12 of 16 refused at once
+    assert.ok(messages.some((m) => /bytes still unwritten, \d+ more would exceed 4198400/.test(m)), messages.join('\n'));
+    assert.ok(engine.running);
+    const child = engine.child;
+    const t0 = Date.now();
+    await engine.stop();
+    assert.equal(child.signalCode, 'SIGKILL');
+    assert.ok(Date.now() - t0 < 1500, `stop took ${Date.now() - t0} ms`);
+    assert.equal(engine.child, null);
+    assert.equal(engine.pending.size, 0);
+});
+
 test('resolveBinary: RP_BARCODE_ENGINE is explicit (missing, not executable, ok) and the fake runs through it', async () => {
     const saved = process.env.RP_BARCODE_ENGINE;
+    let dir;
     try {
         process.env.RP_BARCODE_ENGINE = '/nonexistent/rp-barcode';
         assert.throws(() => resolveBinary(), (err) => err instanceof EngineError && err.code === 'unavailable'
             && /RP_BARCODE_ENGINE \/nonexistent\/rp-barcode: not found/.test(err.message));
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-engine-'));
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-engine-'));
         const plain = path.join(dir, 'rp-barcode');
         fs.writeFileSync(plain, '#!/bin/sh\nexit 0\n', { mode: 0o644 });
         process.env.RP_BARCODE_ENGINE = plain;
@@ -338,38 +375,48 @@ test('resolveBinary: RP_BARCODE_ENGINE is explicit (missing, not executable, ok)
         await engine.stop();
     } finally {
         if (saved === undefined) delete process.env.RP_BARCODE_ENGINE; else process.env.RP_BARCODE_ENGINE = saved;
+        if (dir) fs.rmSync(dir, { recursive: true, force: true });
     }
 });
 
-test('resolveBinary: without RP_BARCODE_ENGINE, the platform package, then PATH, else unavailable listing what was tried', async () => {
+test('resolveBinary: without RP_BARCODE_ENGINE, the platform package, then PATH, else unavailable listing what was tried', async (t) => {
     const pkg = ENGINE_PACKAGES[`${process.platform}-${process.arch}`];
-    if (!pkg) return;                                            // no engine package for this platform: nothing to try
-    const rootModules = path.join(__dirname, '..', 'node_modules');
-    const pkgDir = path.join(rootModules, pkg);
-    assert.ok(!fs.existsSync(pkgDir), `${pkg} is installed: this test needs it absent`);
-    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-path-'));
+    if (!pkg) return t.skip(`no engine package for ${process.platform}-${process.arch}`);
+    // The package is mounted in a temporary node_modules handed over through `paths`: the repo's own node_modules
+    // (where the node's prebuilt addon lives) is never written to or deleted from
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-resolve-'));
+    const modules = path.join(tmp, 'node_modules');
+    const pkgDir = path.join(modules, pkg);
+    const bin = path.join(tmp, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    const resolve = () => resolveBinary({ paths: [modules] });
     try {
         await withEnv({ RP_BARCODE_ENGINE: undefined, PATH: bin }, () => {
-            assert.throws(() => resolveBinary(), (err) => err instanceof EngineError && err.code === 'unavailable'
+            assert.throws(resolve, (err) => err instanceof EngineError && err.code === 'unavailable'
                 && err.message.includes(`${pkg} is not installed`) && err.message.includes('rp-barcode is not in PATH'));
+            // The default lookup (this module's own node_modules chain) is exercised too: an installed engine package
+            // or the same unavailable error, never anything else
+            try {
+                assert.equal(resolveBinary().source, pkg);
+            } catch (err) {
+                assert.ok(err instanceof EngineError && err.code === 'unavailable', err.stack);
+            }
             const onPath = path.join(bin, 'rp-barcode');
             fs.writeFileSync(onPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-            assert.deepEqual(resolveBinary(), { path: onPath, source: 'PATH' });
+            assert.deepEqual(resolve(), { path: onPath, source: 'PATH' });
             // The platform package wins over PATH once installed next to the node; a broken install says why
             fs.mkdirSync(path.join(pkgDir, 'bin'), { recursive: true });
             fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ name: pkg, version: '0.2.0' }));
-            assert.deepEqual(resolveBinary(), { path: onPath, source: 'PATH' });   // bin/rp-barcode missing → PATH
+            assert.deepEqual(resolve(), { path: onPath, source: 'PATH' });   // bin/rp-barcode missing → PATH
             const pkgBin = path.join(pkgDir, 'bin', 'rp-barcode');
             fs.writeFileSync(pkgBin, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-            assert.deepEqual(resolveBinary(), { path: pkgBin, source: pkg });
+            assert.deepEqual(resolve(), { path: pkgBin, source: pkg });
             fs.rmSync(onPath);
             fs.chmodSync(pkgBin, 0o644);
-            assert.throws(() => resolveBinary(), (err) => err.code === 'unavailable' && /not executable/.test(err.message));
+            assert.throws(resolve, (err) => err.code === 'unavailable' && /not executable/.test(err.message));
         });
     } finally {
-        fs.rmSync(pkgDir, { recursive: true, force: true });
-        fs.rmSync(path.join(rootModules, '@rosepetal'), { recursive: true, force: true });
-        fs.rmSync(bin, { recursive: true, force: true });
+        fs.rmSync(tmp, { recursive: true, force: true });
     }
 });
 
@@ -399,12 +446,21 @@ test('singleton: acquire/release count nodes and stop the shared engine with the
 
 after(async () => {
     await sleep(50);                                             // let the last 'close' events land
-    for (const engine of ENGINES) {
-        assert.equal(engine.child, null, `engine left a child (pid ${engine.pid})`);
-        assert.equal(engine.running, false);
-        assert.equal(engine.pending.size, 0);
+    // Record the evidence first, then clean up whatever a failed test left behind (so the runner never waits on a
+    // live child), and only then assert on the evidence
+    const leaked = ENGINES.filter((e) => e.child !== null).map((e) => e.pid);
+    const stillRunning = ENGINES.filter((e) => e.running).length;
+    const stillPending = ENGINES.reduce((n, e) => n + e.pending.size, 0);
+    const listeners = process.listeners('exit').filter((l) => ENGINES.some((e) => e._killOnExit === l)).length;
+    const children = liveChildren();
+    await Promise.all(ENGINES.map((e) => e.stop().catch(() => {})));
+    for (const pid of liveChildren()) {
+        try { process.kill(pid, 'SIGKILL'); } catch (_) { /* gone meanwhile */ }
     }
-    assert.equal(process.listeners('exit').filter((l) => ENGINES.some((e) => e._killOnExit === l)).length, 0);
-    assert.deepEqual(liveChildren(), [], 'child processes still alive after the tests');
+    assert.deepEqual(leaked, [], 'engines that still had a child after their test (pids)');
+    assert.equal(stillRunning, 0, 'engines still running after their test');
+    assert.equal(stillPending, 0, 'requests still pending after the tests');
+    assert.equal(listeners, 0, 'process exit listeners left by engines');
+    assert.deepEqual(children, [], 'child processes still alive after the tests');
     assert.deepEqual(unhandled, [], 'unhandled rejections during the tests');
 });

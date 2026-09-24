@@ -16,6 +16,11 @@
  *   FAKE_IGNORE_STOP=1      works but ignores `shutdown` and SIGTERM
  *   FAKE_MAX_PAYLOAD=n      the `limits.maxPayload` advertised in the hello (default 256 MiB, like `--max-payload`)
  *   FAKE_REPLY_PAYLOAD=1    attaches a payload to every decode reply (a protocol violation seen from the client)
+ *   FAKE_STALL=1            greets, then never reads stdin (the client's writes pile up); with FAKE_IGNORE_STOP the
+ *                           client has to SIGKILL it
+ *
+ * Known simplification: `shutdown` and EOF on stdin exit at once, without answering the decodes still delayed by
+ * FAKE_DELAY_MS (the real server finishes the requests in flight first, §3.1/§3.2).
  *
  * Like the real server it validates `payload.length === width·height·channels` for `encoding: "raw"` and rejects
  * unknown keys inside `options` (schema 1.0 §12.1) with `invalid_input`. Logs go to stderr, one line per event.
@@ -32,6 +37,7 @@ const noHello = env.FAKE_NO_HELLO === '1';
 const ignoreStop = env.FAKE_IGNORE_STOP === '1';
 const maxPayload = env.FAKE_MAX_PAYLOAD === undefined ? 268435456 : Number(env.FAKE_MAX_PAYLOAD);
 const replyPayload = env.FAKE_REPLY_PAYLOAD === '1';
+const stall = env.FAKE_STALL === '1';
 
 // decodeOptions of docs/schema/result-1.0.md §12.1: anything else is invalid_input, as with DisallowUnknownFields
 const KNOWN_OPTIONS = new Set(['symbologies', 'region', 'scanStep', 'horizontal', 'vertical', 'quietZone', 'optionalChecksum',
@@ -112,6 +118,10 @@ if (noHello) {
                 fail(req.id, 'unsupported', `op ${JSON.stringify(req.op)}`);
         }
     });
-    process.stdin.on('data', (chunk) => parser.push(chunk));
-    process.stdin.on('end', () => process.exit(0));            // EOF: the parent closed the pipe (§3.1: status 0)
+    if (stall) {
+        setInterval(() => { /* alive, deaf: stdin is never read */ }, 1 << 30);
+    } else {
+        process.stdin.on('data', (chunk) => parser.push(chunk));
+        process.stdin.on('end', () => process.exit(0));        // EOF: the parent closed the pipe (§3.1: status 0)
+    }
 }
