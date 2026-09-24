@@ -27,7 +27,7 @@ The package is split into two components:
 
 - **`barcode-engine/`** -- Native C++ addon (Node-API) that wraps ZBar, ZXing, and OpenCV. As of v1.2.1, all decoding and preprocessing operations run on **async workers**, so the Node-RED event loop is never blocked.
 - **`node-red-contrib-barcode-reader/`** -- Node-RED wrapper that provides the editor UI, block configuration, execution modes, and result merging/deduplication.
-- **`node-red-contrib-barcode-reader/lib/rp-mapping.js`** + the npm dependency [`@rosepetal/barcode-engine-client`](https://github.com/rosepetal-ai/rosepetal-barcode-sdk/tree/dev/clients/node) -- the `rosepetal` decoder (v1.4.0+): the client runs `rp-barcode serve` (a Go binary from the optional `@rosepetal/barcode-engine-*` packages) as one child process per Node-RED runtime, shared by every barcode-reader node; `rp-mapping.js` translates a block's options into the engine's decode options and the engine's symbols into the raw results the node already merges.
+- **`node-red-contrib-barcode-reader/lib/rp-mapping.js`** + the npm dependency [`@rosepetal/barcode-engine-client`](https://www.npmjs.com/package/@rosepetal/barcode-engine-client) -- the `rosepetal` decoder (v1.4.0+): the client runs `rp-barcode serve` (a Go binary from the optional `@rosepetal/barcode-engine-*` packages) as one child process per Node-RED runtime, shared by every barcode-reader node; `rp-mapping.js` translates a block's options into the engine's decode options and the engine's symbols into the raw results the node already merges.
 
 Prebuilt binaries for `barcode-engine` are available for **linux-x64**, **linux-arm64**, and **linuxmusl-x64**. On other platforms the addon is compiled from source during `npm install`.
 
@@ -55,18 +55,27 @@ npm install @rosepetal/node-red-contrib-barcode-reader
 npm will attempt to fetch a prebuilt native addon for your platform. Prebuilt binaries bundle OpenCV, ZBar, and ZXing; system libraries are only required for source builds or unsupported platforms.
 
 The optional `rosepetal` decoder needs the Rosepetal SDK engine. The node depends on
-[`@rosepetal/barcode-engine-client`](https://github.com/rosepetal-ai/rosepetal-barcode-sdk/tree/dev/clients/node) (npmjs,
-published by the SDK repository), which declares the engine binary as its **optional** dependencies
-`@rosepetal/barcode-engine-linux-x64` and `@rosepetal/barcode-engine-linux-arm64` (0.2.x, static binary at
-`bin/rp-barcode`, the same package for glibc and musl) on Rosepetal's private Artifact Registry
-(`europe-southwest1-npm.pkg.dev/rosepetal-artifact/private-node-packages`). On a machine without access to that registry
-npm skips them with a warning, every other decoder works as before, and a `rosepetal` block warns
-`Rosepetal engine not available` once per node and returns `[]`. Manual install of the engine in the Node-RED user dir:
-`gcloud auth login && npx google-artifactregistry-auth`, then
-`npm install @rosepetal/barcode-engine-linux-x64 --registry=https://europe-southwest1-npm.pkg.dev/rosepetal-artifact/private-node-packages/`
-(only that package: an `npm install --registry=…` of anything else in the user dir reconciles the whole tree against that
-registry). `RP_BARCODE_ENGINE=/path/to/rp-barcode` points the node at another build of the engine (SDK >= 0.2.0; when set
-it must be executable, the package and `PATH` are then not searched); as a last resort `rp-barcode` is looked up in `PATH`.
+[`@rosepetal/barcode-engine-client`](https://www.npmjs.com/package/@rosepetal/barcode-engine-client) (npmjs, published by
+the SDK), which declares the engine binary as its **optional** dependencies `@rosepetal/barcode-engine-linux-x64` and
+`@rosepetal/barcode-engine-linux-arm64` (0.2.x, static binary at `bin/rp-barcode`, the same package for glibc and musl)
+on Rosepetal's private Artifact Registry (`europe-southwest1-npm.pkg.dev/rosepetal-artifact/private-node-packages`). When
+the registry npm installs from does not carry them (the public npmjs does not) npm skips them with a warning, every other
+decoder works as before, and a `rosepetal` block warns `Rosepetal engine not available` once per node and returns `[]`.
+
+To add the engine to such a Node-RED, fetch the platform package **outside the user dir** with a token and install it as
+a tarball kept in the user dir (`package.json` records its path):
+
+```bash
+REG=europe-southwest1-npm.pkg.dev/rosepetal-artifact/private-node-packages
+npm pack @rosepetal/barcode-engine-linux-x64@0.2 --pack-destination ~/.node-red --registry=https://$REG/ "--//$REG/:_authToken=$(gcloud auth print-access-token)"
+cd ~/.node-red && npm install --no-audit --no-fund ./rosepetal-barcode-engine-linux-x64-0.2.*.tgz
+```
+
+Never run `npm install --registry=…` inside the user dir (it reconciles the whole tree against that registry), and do not
+point the `@rosepetal` scope at the private registry (it does not proxy npmjs: the public client and this package would
+404). Alternatively `RP_BARCODE_ENGINE=/path/to/rp-barcode` points the node at another build of the engine (SDK >= 0.2.0;
+when set it must be executable, the package and `PATH` are then not searched); as a last resort `rp-barcode` is looked up
+in `PATH`.
 
 ### Build from source (Debian/Ubuntu)
 
@@ -82,7 +91,8 @@ The script will:
 
 Since 1.4.0 the inner package (`node-red-contrib-barcode-reader/package.json`, what `INSTALL.sh` installs) depends on
 `@rosepetal/barcode-engine-client` from npmjs, so its `npm install` needs that package published; the engine comes from
-the private registry (configure the `@rosepetal` scope first) or from `RP_BARCODE_ENGINE`, as above.
+a scope registry that also proxies npmjs (the controller image's `node-packages`), from the engine tarball or from
+`RP_BARCODE_ENGINE`, as above.
 
 ### Build dependencies (source builds only)
 
@@ -167,13 +177,13 @@ Each block represents a detection attempt with specific configuration. Blocks ca
 - The reported box is the extent of the profiles that agreed, mapped back to the crop; when another block also reads the same value, that block's box is kept
 
 **Rosepetal SDK** (`rosepetal`, v1.4.0+)
-- Rosepetal's own engine (Go, [`rosepetal-barcode-sdk`](https://github.com/rosepetal-ai/rosepetal-barcode-sdk) 0.2.0) run as one persistent `rp-barcode serve` child process per Node-RED runtime, shared by all barcode-reader nodes; pixels go over stdio as raw frames and the decode runs off the event loop
+- Rosepetal's own engine (Go, `rosepetal-barcode-sdk` 0.2.0, Rosepetal's internal repository) run as one persistent `rp-barcode serve` child process per Node-RED runtime, shared by all barcode-reader nodes; pixels go over stdio as raw frames and the decode runs off the event loop
 - 1D only: UPC-A, UPC-E, EAN-13, EAN-8, Code 128 / GS1-128, Code 39, Code 93, Codabar, ITF. Keep a ZBar/ZXing block for 2D codes; a block whose Formats hold only 2D codes returns `[]` without calling the engine
 - Options: **Effort** (`robust` default / `normal`), **Directions**, **Try inverted image**, **Add-ons**, **UPC-A as EAN-13**, **Code 39 full ASCII**, **Optional checksum**, **Quiet zone**, **Min lines**, **Timeout** (ms, default 5000, at most 2147483647; it does not cover the engine's cold start). **Directions** and **Try inverted image** only apply with `normal` (`robust` scans both directions and the inverted image anyway). `tryHarder` from older flows is ignored; a value outside the vocabulary fails that block with a warning and `[]`
 - Output adds `symbology`, `identifier` (ISO/IEC 15424), `orientation` (0/90/180/270), `lines`, `confidence`, `checksum` when the base result came from this block; `corners` are the bar extent (TL, TR, BR, BL) and `box.angle` is 0 for a horizontal code (ZXing gives ±90 there). `format` uses ZXing's spelling plus `EAN-2`/`EAN-5` for add-ons read as separate symbols
 - Needs the engine package (`@rosepetal/barcode-engine-linux-x64` / `-linux-arm64`, private registry, optional dependencies of the client) or `RP_BARCODE_ENGINE`; without it the block warns once per node and outage and returns `[]`. A running engine that dies is restarted 1 s later by the next request (a binary that fails to start is retried with a growing wait, up to 30 s); the crops of the same message inside that second get `[]`
-- Differences against ZBar/ZXing (format spelling, UPC-A digits, UPC-E 8 vs 12 digits, Code 39 pairs, GS1-128 separators, add-ons, geometry) and the two values that change in mixed flows: readme *Rosepetal SDK* and the SDK's [`docs/compat/barcode-reader.md`](https://github.com/rosepetal-ai/rosepetal-barcode-sdk/blob/dev/docs/compat/barcode-reader.md)
-- Timing on the development host: about 11-12 ms per 600×300 crop with `robust` (20 crops in one array: 220-245 ms); the first decode after a (re)deploy also pays the engine start
+- Differences against ZBar/ZXing (format spelling, UPC-A digits, UPC-E 8 vs 12 digits, Code 39 pairs, GS1-128 separators, add-ons, geometry) and the two values that change in mixed flows: readme *Rosepetal SDK* and `docs/compat/barcode-reader.md` of the SDK repository
+- Timing on the development host: about 11-13 ms per 600×300 crop with `robust` (20 crops in one array: about 220-255 ms); `robust` on a large full image with no code costs 0.2-0.8 s (the whole scan runs); the first decode after a (re)deploy also pays the engine start
 
 #### Preprocessing Options
 
@@ -440,7 +450,7 @@ All native decoding and preprocessing runs on C++ async workers. This means:
 
 1. **Number of blocks**: More blocks = longer execution (in Parallel mode)
 2. **Preprocessing method**: Original < Histogram < Otsu
-3. **Decoder choice**: Quagga2 < ZBar < Rosepetal SDK (`normal`) < ZXing ≈ Rosepetal SDK (`robust`) < Rosepetal Projection (approximate)
+3. **Decoder choice**: ZBar < ZXing < Quagga2 < Rosepetal Projection (approximate; Quagga2 is the slow JavaScript path). The Rosepetal SDK is measured per crop in *Decoder Options* above (about 11-13 ms per 600×300 crop with `robust`, less with `normal`): between ZBar and ZXing on crops, slower than both on a large image with no code
 4. **Image size**: Larger images take longer (Rosepetal Projection scales with crop height × width)
 
 ### Optimization Strategies
@@ -480,7 +490,7 @@ When multiple blocks detect the same barcode:
 2. The detection from the **lowest block index** is kept as the primary result
 3. All detection methods are tracked in the `detectedBy` array
 4. Position data (corners, box) comes from the primary detection, and so do the Rosepetal SDK fields (`symbology`, `identifier`, `orientation`, `lines`, `confidence`, `checksum`) when the primary is a `rosepetal` block
-5. Two **different** values at the same place (spatial deduplication) are one symbol: the value more blocks agree on wins, else the lowest block's. This is why adding a `rosepetal` block to a ZBar + ZXing flow prints a UPC-E as its 8 digits (ZXing and the SDK agree) and keeps only one form of a GS1-128 value (ZXing's HRI or the SDK's `\u001d` separators, whichever block is lower); a flow without a `rosepetal` block is unchanged
+5. Two **different** values at the same place (spatial deduplication) are one symbol: the value more blocks agree on wins, else the lowest block's. UPC-E: ZXing and the SDK print the 8 digits, ZBar and `rp-projection` the 12-digit UPC-A expansion. Without a `rosepetal` block, ZBar + ZXing + Projection print `UPC-A "012345000065"` (two votes: `zbar_original`, `rp-projection`). A `rosepetal` block gives `UPC-E "01234565"` its second vote (ZXing + SDK): a 2:2 tie goes to the lowest block, so the value changes to 8 digits only when a `rosepetal` or ZXing block comes before both ZBar and `rp-projection`; a `rosepetal` block appended to the 1.3.0 flow leaves the 12 digits. In ZBar + ZXing + `rosepetal` (no Projection) the 8 digits win 2:1 in any position. A template saved with the 12 digits stops matching in those cases. A GS1-128 keeps only one form (ZXing's HRI or the SDK's `\u001d` separators, whichever block is lower). A flow without a `rosepetal` block is unchanged
 
 **Example:**
 ```javascript
@@ -659,8 +669,9 @@ process. The engine's own messages appear as `[rp-barcode] …` warnings in the 
 
 ### Values changed after adding a `rosepetal` block
 
-UPC-E (8 digits instead of ZBar's 12-digit UPC-A expansion) and GS1-128 (`\u001d` separators or ZXing's HRI, depending on
-block order) are expected: see the deduplication logic above and the readme's *Rosepetal SDK* section. A downstream
+UPC-E (8 digits instead of the 12-digit UPC-A expansion, depending on which block comes first) and GS1-128 (`\u001d`
+separators or ZXing's HRI, depending on block order) are expected: see the deduplication logic above and the readme's
+*Rosepetal SDK* section. A downstream
 filter on `detectedBy.length >= 2` drops every read of a Rosepetal-only flow: use `lines` / `confidence` instead.
 
 ## Best Practices
@@ -780,5 +791,5 @@ const result = JSON.parse(bardecoder.decode('image.jpg'));
 - [ZXing Library](https://github.com/zxing-cpp/zxing-cpp) - Multi-format 1D/2D barcode library
 - [Quagga2](https://github.com/ericblade/quagga2) - JavaScript barcode decoder
 - [OpenCV](https://opencv.org/) - Computer vision library used for preprocessing
-- [rosepetal-barcode-sdk](https://github.com/rosepetal-ai/rosepetal-barcode-sdk) - The Rosepetal SDK engine of the `rosepetal` decoder (`docs/service.md` for the protocol, `docs/compat/barcode-reader.md` for what changes against ZBar/ZXing)
-- [validation-aisvision2.md](validation-aisvision2.md) - Runbook of the on-machine validation of the `rosepetal` decoder
+- [@rosepetal/barcode-engine-client](https://www.npmjs.com/package/@rosepetal/barcode-engine-client) - The engine client of the `rosepetal` decoder (its README describes protocol 1; `docs/compat/barcode-reader.md` of the SDK repository, internal, describes what changes against ZBar/ZXing)
+- [validation.md](validation.md) - How to validate the `rosepetal` decoder on a Node-RED against the other blocks
