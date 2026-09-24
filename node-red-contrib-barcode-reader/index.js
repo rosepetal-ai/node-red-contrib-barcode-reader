@@ -8,6 +8,7 @@ module.exports = {
   // New decoder primitives
   decode_zbar: barcode.decode_zbar,
   decode_zxing: barcode.decode_zxing,
+  decode_projection: barcode.decode_projection,
   // Preprocessing functions
   preprocess_original: barcode.preprocess_original,
   preprocess_histogram: barcode.preprocess_histogram,

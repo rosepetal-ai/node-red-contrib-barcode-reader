@@ -134,6 +134,16 @@ Each block represents a detection attempt with specific configuration. Blocks ca
 - Runs in Node.js without native dependencies
 - Moderate performance
 
+**Rosepetal Projection** (`rp-projection`, v1.3.0+)
+- For noisy or low-resolution 1D codes the other decoders miss (down to ~1.5 px per module)
+- Expects a crop containing a single barcode, e.g. the output of a detector
+- Estimates the bar orientation, straightens the crop, averages bands of pixels into clean 1D profiles, decodes every profile with ZBar and ZXing, and reports a value only when at least **Min votes** profiles agree
+- Gray plus each color channel are tried, so chromatic aberration on one channel does not matter
+- No preprocessing step (the Preprocessing selector is hidden); 1D symbologies only
+- Slower (roughly 50-300 ms depending on crop size), so use it as a fallback block in Sequential mode
+- Options: **Min votes** (default 3; the vote count is returned as the result's quality) and **Strip width** (band height in px, default 16; a second pass uses twice that)
+- The reported box is the extent of the profiles that agreed, mapped back to the crop; when another block also reads the same value, that block's box is kept
+
 #### Preprocessing Options
 
 **Original**
@@ -363,22 +373,22 @@ msg.barcodes = [
 
 The canonical names match the values used in each block's **Formats** filter.
 
-| Canonical name | ZBar | ZXing | Quagga2 |
-|----------------|:----:|:-----:|:-------:|
-| `UPCA`         | Y    | Y     | Y       |
-| `UPCE`         | Y    | Y     | Y       |
-| `EAN13`        | Y    | Y     | Y       |
-| `EAN8`         | Y    | Y     | Y       |
-| `Code128`      | Y    | Y     | Y       |
-| `Code39`       | Y    | Y     | Y       |
-| `Code93`       | Y    | Y     | Y       |
-| `Codabar`      | Y    | Y     | Y       |
-| `ITF`          | Y    | Y     | Y       |
-| `QRCode`       | Y    | Y     | -       |
-| `PDF417`       | Y    | Y     | -       |
-| `DataMatrix`   | -    | Y     | -       |
-| `Aztec`        | -    | Y     | -       |
-| `DataBar`      | Y    | Y     | -       |
+| Canonical name | ZBar | ZXing | Quagga2 | Rosepetal Projection |
+|----------------|:----:|:-----:|:-------:|:--------------------:|
+| `UPCA`         | Y    | Y     | Y       | Y                    |
+| `UPCE`         | Y    | Y     | Y       | Y                    |
+| `EAN13`        | Y    | Y     | Y       | Y                    |
+| `EAN8`         | Y    | Y     | Y       | Y                    |
+| `Code128`      | Y    | Y     | Y       | Y                    |
+| `Code39`       | Y    | Y     | Y       | Y                    |
+| `Code93`       | Y    | Y     | Y       | Y                    |
+| `Codabar`      | Y    | Y     | Y       | Y                    |
+| `ITF`          | Y    | Y     | Y       | Y                    |
+| `QRCode`       | Y    | Y     | -       | -                    |
+| `PDF417`       | Y    | Y     | -       | -                    |
+| `DataMatrix`   | -    | Y     | -       | -                    |
+| `Aztec`        | -    | Y     | -       | -                    |
+| `DataBar`      | Y    | Y     | -       | Y                    |
 
 Formats not supported by a decoder are omitted from the editor's checklist when that decoder is selected; if a Format is set programmatically that the decoder doesn't support, it is silently ignored.
 
@@ -395,8 +405,8 @@ All native decoding and preprocessing runs on C++ async workers. This means:
 
 1. **Number of blocks**: More blocks = longer execution (in Parallel mode)
 2. **Preprocessing method**: Original < Histogram < Otsu
-3. **Decoder choice**: Quagga2 < ZBar < ZXing (approximate)
-4. **Image size**: Larger images take longer
+3. **Decoder choice**: Quagga2 < ZBar < ZXing < Rosepetal Projection (approximate)
+4. **Image size**: Larger images take longer (Rosepetal Projection scales with crop height × width)
 
 ### Optimization Strategies
 
