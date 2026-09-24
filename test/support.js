@@ -49,6 +49,23 @@ function addonAvailable() {
     }
 }
 
+// True when no process with that pid exists (Linux: /proc); always true elsewhere
+const procGone = (pid) => process.platform !== 'linux' || !fs.existsSync(`/proc/${pid}`);
+
+// Live (non-zombie) children of this process, from /proc (Linux); [] elsewhere. The tests prove no engine outlives them.
+function liveChildren() {
+    if (process.platform !== 'linux') return [];
+    const out = [];
+    for (const name of fs.readdirSync('/proc')) {
+        if (!/^\d+$/.test(name)) continue;
+        let stat;
+        try { stat = fs.readFileSync(`/proc/${name}/stat`, 'utf8'); } catch (_) { continue; }
+        const [state, ppid] = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+        if (Number(ppid) === process.pid && state !== 'Z') out.push(Number(name));
+    }
+    return out;
+}
+
 // A barcode-reader node `n1` named `reader` wired to a helper node `h1`
 function readerFlow(blocks, props = {}) {
     return [
@@ -72,4 +89,4 @@ function runFlow(helper, payload, { timeoutMs = 15000 } = {}) {
     });
 }
 
-module.exports = { FIXTURES_DIR, INDEX, fixture, loadRaw, loadGray, pasteOnWhite, addonAvailable, readerFlow, runFlow };
+module.exports = { FIXTURES_DIR, INDEX, fixture, loadRaw, loadGray, pasteOnWhite, addonAvailable, procGone, liveChildren, readerFlow, runFlow };
