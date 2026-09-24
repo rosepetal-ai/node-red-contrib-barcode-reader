@@ -1,7 +1,7 @@
 {
   "name": "@rosepetal/node-red-contrib-barcode-reader",
   "version": "1.4.0",
-  "description": "Rosepetal multi-decoder barcode scanner with ZBar, ZXing, and Quagga2 support",
+  "description": "Rosepetal multi-decoder barcode scanner for Node-RED: ZBar, ZXing, Quagga2, Rosepetal Projection and the Rosepetal SDK engine",
   "main": "index.js",
   "scripts": {
     "test": "node --test test/*.test.js"
@@ -19,6 +19,7 @@
     "zbar",
     "zxing",
     "quagga2",
+    "rosepetal",
     "scanner"
   ],
   "author": "Rosepetal SL (https://www.rosepetal.ai)",
