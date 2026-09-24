@@ -22,4 +22,7 @@ scripts/make-fixtures.js
 .github/
 .superpowers/
 .npmrc
-docs/validation-aisvision2.md
+docs/validation.md
+# build-prebuild.yml copies the addon artefacts here at release time; the platform packages publish from these directories
+# on their own and the main package needs none of it
+npm/
