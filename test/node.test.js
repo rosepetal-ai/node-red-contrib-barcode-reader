@@ -129,6 +129,11 @@ test('engine stderr: one RED.log.warn per line with the [rp-barcode] prefix, chu
         engine.emit('exit', { code: 0, signal: null });                  // the process went away: the partial line is flushed
         assert.deepEqual(runtimeWarnings().filter((m) => /^\[rp-barcode\]/.test(m)),
             ['[rp-barcode] first line', '[rp-barcode] second line', '[rp-barcode] tail without newline']);
+        // T4-M2: a runaway line (no newline) is written once it passes 8192 chars and never kept; the next line is intact
+        engine.emit('stderr', 'x'.repeat(9000));
+        engine.emit('stderr', 'tail\n');
+        assert.deepEqual(runtimeWarnings().filter((m) => /^\[rp-barcode\]/.test(m)).slice(3),
+            ['[rp-barcode] ' + 'x'.repeat(9000), '[rp-barcode] tail']);
     });
     // Two reader nodes with rosepetal blocks in one flow, another load: two refs, still one hook
     if (!addonAvailable()) return;
@@ -184,7 +189,10 @@ test('close with an array of crops in flight: the closed node never restarts the
         // Node-RED does not cancel the input handler: the old node runs the four remaining crops, each skipped with a debug line
         for (const t0 = Date.now(); debugs.length < 4 && Date.now() - t0 < 3000;) await sleep(10);
         assert.deepEqual(debugs, Array(4).fill('Block 0 (rosepetal) skipped: the node closed while this message was in flight'));
-        assert.deepEqual(warns, []);                                   // the crop in flight landed inside the drain; the skipped ones never warn
+        // The ruling: the skipped crops never warn. The crop in flight normally lands inside the drain (350 ms of margin
+        // here); on a slow host it may be rejected by the stop instead, which is the one warn the ruling allows
+        assert.deepEqual(warns.filter((w) => !/^Block 0 \(rosepetal\) failed: engine (exited|stopped)/.test(w)), [], warns.join('\n'));
+        assert.ok(warns.length <= 1, warns.join('\n'));
         assert.equal(engine.refs, 0);
         assert.equal(engine.child, null);                              // nobody restarted the engine
         assert.ok(procGone(pid));
@@ -287,7 +295,7 @@ test('engine absent: one warn per node with the install hint, rosepetal gives []
     const hint = /^Rosepetal engine not available: RP_BARCODE_ENGINE \/nonexistent\/rp-barcode: not found\. Install @rosepetal\/barcode-engine-linux-x64 or -linux-arm64 /;
     // The wait after a failed start is per process, the warn per node: a node that asks inside it names the same failure
     // through the wait ("engine unavailable, retry in N ms (...)"), still with the install hint (the engine never ran)
-    const hintInWait = /^Rosepetal engine not available: (engine unavailable, retry in \d+ ms \()?RP_BARCODE_ENGINE \/nonexistent\/rp-barcode: not found\)?\. Install @rosepetal\/barcode-engine-linux-x64 or -linux-arm64 /;
+    const hintInWait = /^Rosepetal engine not available: (?:RP_BARCODE_ENGINE \/nonexistent\/rp-barcode: not found|engine unavailable, retry in \d+ ms \(RP_BARCODE_ENGINE \/nonexistent\/rp-barcode: not found\))\. Install @rosepetal\/barcode-engine-linux-x64 or -linux-arm64 /;
     try {
         // n1 (zbar + rosepetal) drives the assertions; n2 (rosepetal only, wired to h2) proves the warn is per node, not
         // per process. The helper spies Node.prototype once per load, shared by every node: own-property collectors count per node
@@ -311,7 +319,7 @@ test('engine absent: one warn per node with the install hint, rosepetal gives []
             assert.deepEqual(second.payload[0].detectedBy, ['zbar_original']);
             assert.equal(warns1.length, 1);                              // once per node, not per message
             assert.equal(n1.error.callCount, 0);
-            assert.equal(n1.log.callCount, 0);                           // no engine: no version line (the spy is per load: n2 neither)
+            assert.equal(n1.log.callCount, 0);                           // no engine: no version line
             assert.equal(engine.child, null);
             assert.equal(engine.lastError.code, 'unavailable');
             const out2 = await new Promise((resolve, reject) => {       // n2's message completes before the unload: nothing left in flight
@@ -410,6 +418,35 @@ test('engine crash in the middle of an array of 20 crops: length and order kept,
     } finally {
         delete process.env.FAKE_CRASH_AFTER;
         rp.setEngineOptions({ backoff: { initialMs: 50, maxMs: 200 } });   // configure() also resets the wait
+    }
+});
+
+test('a block that times out warns with the timeout and gives [], the late reply is discarded, the engine keeps running', { timeout: 20000 }, async (t) => {
+    process.env.FAKE_DELAY_MS = '300';                                  // every decode answers after 300 ms: a 100 ms block always times out
+    try {
+        await withFlow(t, [{ ...ROSEPETAL, options: { timeoutMs: 100 } }], {}, async (n1) => {
+            const engine = rp.getEngine();
+            const msg = await runFlow(helper, loadRaw('ean13.png'));
+            assert.deepEqual(msg.payload, []);
+            assert.equal(typeof msg.performance.reader.milliseconds, 'number');
+            assert.equal(n1.warn.callCount, 1, n1.warn.getCalls().map((c) => c.args[0]).join('\n'));
+            assert.equal(n1.warn.firstCall.args[0], 'Block 0 (rosepetal) failed: engine timeout after 100 ms');   // §4.3: the client's message, not "not available"
+            assert.equal(n1.error.callCount, 0);
+            const pid = engine.pid;
+            assert.ok(engine.running && pid > 0);                        // a timeout never restarts the engine
+            await sleep(400);                                            // the late reply lands and is dropped by id
+            assert.equal(engine.pending.size, 0);
+            assert.ok(engine.running);
+            assert.equal(engine.pid, pid);                               // (lastError is not checked: the shared singleton keeps the last crash's error across a good restart)
+            // The same block asks again on the same process: the same timeout, one more warn (it is per request)
+            const again = await runFlow(helper, loadRaw('ean13.png'));
+            assert.deepEqual(again.payload, []);
+            assert.equal(n1.warn.callCount, 2);
+            assert.equal(n1.warn.secondCall.args[0], 'Block 0 (rosepetal) failed: engine timeout after 100 ms');
+            assert.equal(engine.pid, pid);
+        });
+    } finally {
+        delete process.env.FAKE_DELAY_MS;
     }
 });
 

@@ -24,7 +24,7 @@
     "url": "https://github.com/rosepetal-ai/node-red-contrib-barcode-reader/issues"
   },
   "engines": {
-    "node": ">=14.0"
+    "node": ">=18"
   },
   "node-red": {
     "nodes": {

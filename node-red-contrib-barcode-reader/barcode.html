@@ -204,7 +204,7 @@
                             </div>
                             <div class="block-form-row rosepetal-row">
                                 <label>Timeout (ms)</label>
-                                <input type="number" class="block-rp-timeout" min="1" step="100" value="${rpOption(block, 'timeoutMs', 5000)}">
+                                <input type="number" class="block-rp-timeout" min="1" max="2147483647" step="100" value="${rpOption(block, 'timeoutMs', 5000)}">
                             </div>
                             <div class="block-form-row rosepetal-row">
                                 <label>Flags</label>
@@ -318,17 +318,20 @@
                 }
 
                 if (decoder === 'rosepetal') {
-                    // Enums as chosen; integers through parseInt (an empty or invalid input saves the default, as
-                    // Min votes does); booleans from the checkboxes. optionsFromBlock (lib/rp-mapping.js) is strict:
-                    // never a string number, a NaN, a negative Min lines or a Timeout below 1 in the flow
-                    const minLines = parseInt(blockElement.find('.block-rp-minlines').val(), 10);
-                    const timeoutMs = parseInt(blockElement.find('.block-rp-timeout').val(), 10);
+                    // Enums as chosen; integers as whole numbers (an empty or invalid input saves the default, as Min
+                    // votes does; a typed `1e3` is 1000, where parseInt would stop at the exponent and save 1 ms);
+                    // booleans from the checkboxes. optionsFromBlock (lib/rp-mapping.js) is strict: never a string
+                    // number, a NaN, a negative Min lines or a Timeout outside [1, 2147483647] (the largest delay a
+                    // Node timer takes; above it every decode would time out at once) in the flow
+                    const int = (v) => { const n = v === '' ? NaN : Math.trunc(Number(v)); return Number.isFinite(n) ? n : NaN; };
+                    const minLines = int(blockElement.find('.block-rp-minlines').val());
+                    const timeoutMs = int(blockElement.find('.block-rp-timeout').val());
                     options.effort = blockElement.find('.block-rp-effort').val();
                     options.directions = blockElement.find('.block-rp-directions').val();
                     options.addOn = blockElement.find('.block-rp-addon').val();
                     options.quietZone = blockElement.find('.block-rp-quietzone').val();
                     options.minLines = minLines >= 0 ? minLines : 0;
-                    options.timeoutMs = timeoutMs >= 1 ? timeoutMs : 5000;
+                    options.timeoutMs = timeoutMs >= 1 && timeoutMs <= 2147483647 ? timeoutMs : 5000;
                     options.tryInvert = blockElement.find('.block-rp-tryinvert').is(':checked');
                     options.upcaAsEan13 = blockElement.find('.block-rp-upca').is(':checked');
                     options.code39FullAscii = blockElement.find('.block-rp-code39').is(':checked');

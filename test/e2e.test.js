@@ -68,25 +68,28 @@ test('e2e: hello of the real engine (protocol 1, schema 1.0, decode/ping/shutdow
     if (!REAL()) return t.skip(skipReason);
     const engine = new Engine({ helloTimeoutMs: HELLO_TIMEOUT_MS });
     const hello = await engine.start();
-    t.diagnostic(`engine ${hello.engineVersion} (sdk ${hello.sdk}, schema ${hello.schema}, workers ${hello.workers}, queue ${hello.queue}) from ${BIN}`);
-    assert.equal(hello.id, 0);
-    assert.equal(hello.op, 'hello');
-    assert.equal(hello.protocol, 1);                                  // the one version this node speaks
-    assert.equal(hello.schema, '1.0');                                // the symbols of index.json
-    assert.match(hello.sdk, /^\d+\.\d+\.\d+/, 'sdk is a semver');
-    // §3.2: engineVersion is Version.SDK + "+" + the commit rp-barcode version prints (or "+dev"). The SDK number
-    // itself is not pinned here: the serve branch carries 0.1.0 until the 2A-T6 bump, 0.2.0 from then on
-    assert.ok(hello.engineVersion.startsWith(`${hello.sdk}+`) && hello.engineVersion.length > hello.sdk.length + 1, hello.engineVersion);
-    for (const op of ['decode', 'ping', 'shutdown']) assert.ok(hello.ops.includes(op), op);
-    assert.ok(Number.isInteger(hello.workers) && hello.workers >= 1, `workers ${hello.workers}`);
-    assert.ok(Number.isInteger(hello.queue) && hello.queue >= 1, `queue ${hello.queue}`);
-    for (const key of ['maxHeader', 'maxPayload', 'maxSide', 'maxPixels']) assert.equal(typeof hello.limits[key], 'number', key);
-    assert.ok(hello.limits.maxPayload >= 600 * 300, 'maxPayload holds a crop');
-    assert.deepEqual(hello, HELLO, 'the hello is the same on every start');
-    assert.deepEqual(await engine.ping(), { symbols: [], image: null, timing: null });   // answered without the queue
-    assert.ok(engine.running);
-    const child = engine.child;
-    await engine.stop();                                              // drain, shutdown: the server exits by itself
+    const child = engine.child;                                       // taken now: a failed assertion below must not leave it alive
+    try {
+        t.diagnostic(`engine ${hello.engineVersion} (sdk ${hello.sdk}, schema ${hello.schema}, workers ${hello.workers}, queue ${hello.queue}) from ${BIN}`);
+        assert.equal(hello.id, 0);
+        assert.equal(hello.op, 'hello');
+        assert.equal(hello.protocol, 1);                              // the one version this node speaks
+        assert.equal(hello.schema, '1.0');                            // the symbols of index.json
+        assert.match(hello.sdk, /^\d+\.\d+\.\d+/, 'sdk is a semver');
+        // §3.2: engineVersion is Version.SDK + "+" + the commit rp-barcode version prints (or "+dev"). The SDK number
+        // itself is not pinned here: the serve branch carries 0.1.0 until the 2A-T6 bump, 0.2.0 from then on
+        assert.ok(hello.engineVersion.startsWith(`${hello.sdk}+`) && hello.engineVersion.length > hello.sdk.length + 1, hello.engineVersion);
+        for (const op of ['decode', 'ping', 'shutdown']) assert.ok(hello.ops.includes(op), op);
+        assert.ok(Number.isInteger(hello.workers) && hello.workers >= 1, `workers ${hello.workers}`);
+        assert.ok(Number.isInteger(hello.queue) && hello.queue >= 1, `queue ${hello.queue}`);
+        for (const key of ['maxHeader', 'maxPayload', 'maxSide', 'maxPixels']) assert.equal(typeof hello.limits[key], 'number', key);
+        assert.ok(hello.limits.maxPayload >= 600 * 300, 'maxPayload holds a crop');
+        assert.deepEqual(hello, HELLO, 'the hello is the same on every start');
+        assert.deepEqual(await engine.ping(), { symbols: [], image: null, timing: null });   // answered without the queue
+        assert.ok(engine.running);
+    } finally {
+        await engine.stop();                                          // drain, shutdown: the server exits by itself
+    }
     assert.equal(child.exitCode, 0, 'shutdown → status 0');
     assert.equal(child.signalCode, null, 'no signal needed');
     assert.equal(engine.child, null);
@@ -241,6 +244,26 @@ test('e2e through the node: geometry TL,TR,BR,BL and angle, the 90° fixture, GS
         }
         assert.equal(rp.getEngine().child, null, label);
     }
+    // Every fixture through the node (addon preprocessing, dedup, convertToFinalFormat): the `formats` of index.json
+    // are the node's names, the values and corners (±1 px) those of the symbols. The client path above proves the
+    // engine; this proves the mapping end to end for the seven fixtures the cases do not cover
+    for (const f of INDEX.fixtures) {
+        await helper.load(barcodeNode, readerFlow(ROSEPETAL(f.decodeOptions || {})));
+        try {
+            const n1 = helper.getNode('n1');
+            const out = (await runFlow(helper, loadRaw(f.file), { timeoutMs: 30000 })).payload;
+            assert.deepEqual(out.map((s) => [s.format, s.value]), f.formats.map((fmt, i) => [fmt, f.symbols[i].value]), f.file);
+            out.forEach((s, i) => {
+                for (let k = 0; k < 4; k++) {
+                    assert.ok(within(s.corners[k].x * f.width, f.symbols[i].corners[k].x, 1) && within(s.corners[k].y * f.height, f.symbols[i].corners[k].y, 1),
+                        `${f.file} symbol ${i} corner ${k}: ${JSON.stringify(s.corners[k])} vs ${JSON.stringify(f.symbols[i].corners[k])}`);
+                }
+            });
+            assert.equal(n1.warn.callCount, 0, `${f.file}: ${n1.warn.getCalls().map((c) => c.args[0]).join('\n')}`);
+        } finally {
+            await helper.unload();
+        }
+    }
     assert.equal(rp.getEngine().refs, 0);
 });
 
@@ -287,6 +310,7 @@ test('e2e: SIGKILL to the real engine in the middle of an array of 40 crops: len
         assert.ok(pid1 > 0);
         const firstId = engine.nextId;                                 // ids are handed out as the node writes each crop, one at a time
         const pending = runFlow(helper, crops, { timeoutMs: 60000 });
+        pending.catch(() => {});                                       // if the poll below fails, its 60 s timer must not reject unhandled after the unload
         // Crops 0..4 answered, crop 5 written and in flight: the kill lands with a request pending, in the same tick
         for (const t0 = Date.now(); !(engine.nextId >= firstId + 6 && engine.pending.size > 0) && Date.now() - t0 < 20000;) await sleep(1);
         assert.ok(engine.nextId >= firstId + 6 && engine.pending.size > 0, `array in flight (ids ${engine.nextId - firstId}, pending ${engine.pending.size})`);

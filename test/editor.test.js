@@ -90,7 +90,7 @@ test('every option of the block table has a control in a .rosepetal-row and oned
         assert.match(editor, new RegExp(`\\.find\\('\\.${cls}'\\)`), `oneditsave reads .${cls}`);
         assert.match(editor, new RegExp(`options\\.${key} = `), `options.${key}`);
         if (kind === 'enum') assert.match(editor, new RegExp(`options\\.${key} = blockElement\\.find\\('\\.${cls}'\\)\\.val\\(\\);`), `${key} as chosen`);
-        if (kind === 'int') assert.match(editor, new RegExp(`parseInt\\(blockElement\\.find\\('\\.${cls}'\\)\\.val\\(\\), 10\\)`), `${key} parseInt`);
+        if (kind === 'int') assert.match(editor, new RegExp(`int\\(blockElement\\.find\\('\\.${cls}'\\)\\.val\\(\\)\\)`), `${key} through int()`);
         if (kind === 'bool') assert.match(editor, new RegExp(`options\\.${key} = blockElement\\.find\\('\\.${cls}'\\)\\.is\\(':checked'\\);`), `${key} checkbox`);
     }
     assert.match(editor, /if \(decoder === 'rosepetal'\)/);
@@ -98,7 +98,7 @@ test('every option of the block table has a control in a .rosepetal-row and oned
     assert.match(editor, /rosepetal-row/);
     assert.equal((editor.match(/class="block-form-row rosepetal-row"/g) || []).length, 7, 'seven rosepetal rows');
     assert.match(editor, /<input type="number" class="block-rp-minlines" min="0"/);
-    assert.match(editor, /<input type="number" class="block-rp-timeout" min="1"/);
+    assert.match(editor, /<input type="number" class="block-rp-timeout" min="1" max="2147483647"/);   // the largest Node timer (M1)
     for (const cls of ['block-rp-tryinvert', 'block-rp-upca', 'block-rp-code39', 'block-rp-checksum']) {
         assert.match(editor, new RegExp(`<input type="checkbox" class="${cls}"`), `${cls} is a checkbox`);
     }
@@ -173,8 +173,10 @@ test('oneditsave: enums as chosen, integers as numbers (empty or invalid -> defa
         tryInvert: true, upcaAsEan13: false, code39FullAscii: false, checksum: false });
     assert.equal(rp.optionsFromBlock({ decoder: 'rosepetal', options: defaults }).timeoutMs, rp.DEFAULT_TIMEOUT_MS);
 
-    // Hand-typed values the number inputs' min does not stop: never a NaN, a negative or a zero timeout in the flow
-    for (const [minlines, timeout, expected] of [['-3', '-5', [0, 5000]], ['abc', '0', [0, 5000]], ['2.7', '250.9', [2, 250]], ['0', '1', [0, 1]]]) {
+    // Hand-typed values the number inputs' min/max do not stop: never a NaN, a negative, a zero timeout or a timeout
+    // above 2^31 - 1 in the flow; an exponent is read as a number (`1e3` is 1000, parseInt would have saved 1 ms)
+    for (const [minlines, timeout, expected] of [['-3', '-5', [0, 5000]], ['abc', '0', [0, 5000]], ['2.7', '250.9', [2, 250]], ['0', '1', [0, 1]],
+        ['1e3', '1e3', [1000, 1000]], ['1', '2147483647', [1, 2147483647]], ['1', '2147483648', [1, 5000]], ['Infinity', '3e9', [0, 5000]], ['', ' ', [0, 5000]]]) {
         const saved = saveRosepetal({ ...defaultsInputs(), 'block-rp-minlines': minlines, 'block-rp-timeout': timeout });
         assert.deepEqual([saved.minLines, saved.timeoutMs], expected, `${minlines} / ${timeout}`);
         assert.doesNotThrow(() => rp.optionsFromBlock({ decoder: 'rosepetal', options: saved }), `${minlines} / ${timeout}`);

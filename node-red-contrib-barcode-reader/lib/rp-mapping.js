@@ -5,7 +5,8 @@
  * a `rosepetal` block's options → decodeOptions (optionsFromBlock, §4.1). The engine itself (framing, the Engine
  * class, the shared singleton, resolveBinary, the fake engine of the tests) is @rosepetal/barcode-engine-client,
  * shared with node-red-contrib-barcode-verifier so one Node-RED runtime runs one rp-barcode process (D9); this
- * module re-exports the part of it the node and its tests use, so barcode.js requires one thing.
+ * module re-exports the part of it the node uses, so barcode.js requires one thing. The tests use it too, except
+ * that e2e.test.js takes Engine from the client for a private engine (the node has no use for the class).
  */
 const {
     EngineError, INSTALL_HINT, DEFAULT_TIMEOUT_MS, FORMAT_NAMES, ADDON_NAMES, formatName,
@@ -67,20 +68,25 @@ function pickBool(options, name, fallback) {
     if (typeof value !== 'boolean') throw optionError(name, value, 'true|false');
     return value;
 }
-function pickInt(options, name, fallback, min) {
+function pickInt(options, name, fallback, min, max = Infinity) {
     const value = options[name];
     if (unset(value)) return fallback;
-    if (!Number.isInteger(value) || value < min) throw optionError(name, value, `an integer >= ${min}`);
+    if (!Number.isInteger(value) || value < min || value > max) {
+        throw optionError(name, value, Number.isFinite(max) ? `an integer in [${min}, ${max}]` : `an integer >= ${min}`);
+    }
     return value;
 }
+// The largest delay a Node timer takes (2^31 - 1 ms, ~24.8 days): above it setTimeout fires at once
+// (TimeoutOverflowWarning) and every decode would time out immediately. The editor caps its input the same way.
+const MAX_TIMEOUT_MS = 2147483647;
 
 /**
  * A `rosepetal` block (overview §4.1) → { decodeOptions, skip, timeoutMs }: decodeOptions holds the schema-1.0
  * §12.1 keys the block controls (the server rejects unknown keys); skip is true when Formats is restricted and
  * holds nothing the SDK reads (2D only), and the block answers [] without starting the engine, like Quagga2 with
  * formats it does not read; timeoutMs is the client's timer and travels as deadlineMs. `tryHarder` (legacy) is
- * ignored. A value outside the vocabulary throws a plain Error naming the option: that block fails with a warn
- * and [], the other blocks run.
+ * ignored. A value outside the vocabulary (or a timeoutMs outside [1, MAX_TIMEOUT_MS]) throws a plain Error naming
+ * the option: that block fails with a warn and [], the other blocks run.
  *
  * `directions` and `tryInvert` only take effect with effort "normal": robust always scans rows and columns and
  * tries the inverted image (pkg/barcode/decode.go). They are sent either way; the help and the readme say so.
@@ -92,7 +98,7 @@ function optionsFromBlock(block) {
     const options = (block && block.options) || {};
     const formats = Array.isArray(options.formats) ? options.formats : [];
     const symbologies = formats.filter((f) => SDK_SYMBOLOGIES.includes(f));
-    const timeoutMs = pickInt(options, 'timeoutMs', DEFAULT_TIMEOUT_MS, 1);
+    const timeoutMs = pickInt(options, 'timeoutMs', DEFAULT_TIMEOUT_MS, 1, MAX_TIMEOUT_MS);
     if (formats.length > 0 && symbologies.length === 0) {
         return { decodeOptions: null, skip: true, timeoutMs };
     }
@@ -115,8 +121,9 @@ function optionsFromBlock(block) {
 
 module.exports = {
     // This node's mapping
-    SDK_SYMBOLOGIES, OPTION_VALUES, symbolToRaw, optionsFromBlock,
-    // Re-exported from @rosepetal/barcode-engine-client (the shared engine): barcode.js and the tests require only this module
+    SDK_SYMBOLOGIES, OPTION_VALUES, MAX_TIMEOUT_MS, symbolToRaw, optionsFromBlock,
+    // Re-exported from @rosepetal/barcode-engine-client (the shared engine): barcode.js requires only this module;
+    // the tests use it too (e2e.test.js takes Engine from the client for a private engine)
     EngineError, INSTALL_HINT, DEFAULT_TIMEOUT_MS, FORMAT_NAMES, ADDON_NAMES, formatName,
     getEngine, setEngineOptions, acquire, release, FAKE_ENGINE
 };

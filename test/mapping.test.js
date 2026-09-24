@@ -74,6 +74,9 @@ test('optionsFromBlock: defaults of §4.1 (robust, both directions, invert, igno
     assert.equal(rp.optionsFromBlock({ options: { tryHarder: true } }).skip, false);    // legacy key ignored
     assert.equal(rp.optionsFromBlock({ options: { formats: [] } }).skip, false);        // [] = every symbology
     assert.equal(rp.DEFAULT_TIMEOUT_MS, 5000);
+    // The cap is the largest delay a Node timer takes: at it the request still waits, above it (M1) the block fails
+    assert.equal(rp.MAX_TIMEOUT_MS, 2147483647);
+    assert.equal(rp.optionsFromBlock({ options: { timeoutMs: 2147483647 } }).timeoutMs, 2147483647);
 });
 
 test('optionsFromBlock: every option of the table, and skip when Formats holds nothing the SDK reads', () => {
@@ -108,7 +111,9 @@ test('optionsFromBlock: a value outside the vocabulary throws a plain Error nami
         [{ minLines: -1 }, /option minLines: -1 is not an integer >= 0/],
         [{ minLines: 1.5 }, /option minLines/],
         [{ minLines: '3' }, /option minLines/],
-        [{ timeoutMs: 0 }, /option timeoutMs: 0 is not an integer >= 1/],
+        [{ timeoutMs: 0 }, /option timeoutMs: 0 is not an integer in \[1, 2147483647\]/],
+        [{ timeoutMs: 2 ** 31 }, /option timeoutMs: 2147483648 is not an integer in \[1, 2147483647\]/],   // above it setTimeout fires at once
+        [{ timeoutMs: 3000000000 }, /option timeoutMs/],
         [{ timeoutMs: '5000' }, /option timeoutMs/]
     ];
     for (const [options, pattern] of bad) {
