@@ -477,6 +477,60 @@ Napi::Value decoder_zxing(const Napi::CallbackInfo& info) {
   return env.Undefined();
 }
 
+// Projection decoder - async, takes the original crop plus formats and
+// options ({ minVotes, stripWidth }); preprocessing happens inside
+Napi::Value decoder_projection(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() < 4 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "Expected arguments: image data, formats (string[]), options (object), callback").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  if (!info[0].IsObject() && !info[0].IsBuffer()) {
+    Napi::TypeError::New(env, "First argument must be a Buffer or image object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  if (!info[1].IsArray()) {
+    Napi::TypeError::New(env, "Second argument (formats) must be an array of strings").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  if (!info[2].IsObject()) {
+    Napi::TypeError::New(env, "Third argument (options) must be an object").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  std::string errorMsg;
+  cv::Mat mat = InputToMat(info[0], errorMsg);
+  if (mat.empty()) {
+    Napi::Error::New(env, errorMsg.empty() ? "Failed to convert input to valid image matrix" : errorMsg).ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  std::vector<std::string> formats = ArrayToStringVector(info[1].As<Napi::Array>());
+
+  ProjectionOptions opts;
+  Napi::Object optObj = info[2].As<Napi::Object>();
+  if (IsValidNumber(optObj.Get("minVotes"))) {
+    opts.minVotes = optObj.Get("minVotes").As<Napi::Number>().Int32Value();
+  }
+  if (IsValidNumber(optObj.Get("stripWidth"))) {
+    opts.stripWidth = optObj.Get("stripWidth").As<Napi::Number>().Int32Value();
+  }
+  if (opts.minVotes < 1 || opts.stripWidth < 0) {
+    Napi::Error::New(env, "minVotes must be >= 1 and stripWidth >= 0 (0 = auto)").ThrowAsJavaScriptException();
+    return env.Null();
+  }
+
+  Napi::Function cb = info[info.Length() - 1].As<Napi::Function>();
+  auto* worker = new GenericImageWorker(cb, std::move(mat),
+      [formats, opts](const cv::Mat& m) -> WorkResult {
+        return decode_projection(m, formats, opts);
+      });
+  worker->Queue();
+  return env.Undefined();
+}
+
 // Preprocessing: Original (BGR to Grayscale) - async
 Napi::Value preprocessOriginal(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -688,6 +742,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(
     Napi::String::New(env, "decode_zxing"),
     Napi::Function::New(env, decoder_zxing)
+  );
+  exports.Set(
+    Napi::String::New(env, "decode_projection"),
+    Napi::Function::New(env, decoder_projection)
   );
 
   // Preprocessing primitives

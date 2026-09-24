@@ -122,9 +122,9 @@ The node registers automatically as `barcode-reader` in the Node-RED palette und
 ### Block Configuration
 
 Each block specifies:
-- **Decoder**: `zbar`, `zxing`, or `quagga2`
-- **Preprocessing**: `original`, `histogram`, or `otsu`
-- **Options**: Decoder-specific settings (e.g. `formats` allowlist)
+- **Decoder**: `zbar`, `zxing`, `quagga2`, or `rp-projection`
+- **Preprocessing**: `original`, `histogram`, or `otsu` (not used by `rp-projection`)
+- **Options**: Decoder-specific settings (e.g. `formats` allowlist; `minVotes` and `stripWidth` for `rp-projection`)
 
 ## Decoders
 
@@ -133,6 +133,7 @@ Each block specifies:
 | **ZBar** | C++ Native | QR, Code-128, EAN, UPC, Code-39 | Fast | None |
 | **ZXing** | C++ Native | All major 1D/2D formats | Medium | `formats` |
 | **Quagga2** | JavaScript | 1D barcodes (Code-128, EAN, UPC, Code-39, Codabar) | Slower | Reader selection |
+| **Rosepetal Projection** | C++ Native | 1D barcodes | Slow (50-300 ms) | `formats`, `minVotes`, `stripWidth` |
 
 ### ZBar
 - Fastest decoder for common formats
@@ -147,6 +148,14 @@ Each block specifies:
 - Pure JavaScript implementation
 - No native compilation required
 - Best for 1D linear barcodes
+
+### Rosepetal Projection (`rp-projection`)
+- For noisy or low-resolution 1D codes the other decoders miss (down to ~1.5 px per module)
+- Expects a crop of a single barcode (e.g. a detector output); orientation is estimated automatically
+- Straightens the crop, averages bands of pixels into clean 1D profiles, reads each profile with ZBar and ZXing and accepts a value only when at least `minVotes` profiles agree (default 3). Stops early once a value has 3× `minVotes` and leads every other value by 3×; the vote count at that point is returned as the result quality
+- Band height is automatic (12% of the bar height, 8-48 px). Advanced: `options.stripWidth` in the flow JSON overrides it in px (not exposed in the editor)
+- Gray plus each color channel are tried, so chromatic aberration on one channel is harmless
+- No preprocessing step and 1D formats only; slower, so use it as a fallback block
 
 ## Preprocessing Methods
 
@@ -291,6 +300,17 @@ Blocks:
   3. ZXing + Otsu
 ```
 
+### Noisy / Low-resolution 1D Crops
+
+```
+Execution Mode: sequential
+Blocks:
+  1. ZBar + Original            (fast path)
+  2. Rosepetal Projection       (only runs when block 1 finds nothing)
+```
+
+Feed the node a crop containing one barcode. Restrict Formats to the symbology you expect to keep the vote clean.
+
 ## Programmatic API
 
 For use outside Node-RED:
@@ -382,6 +402,7 @@ npm run rebuild
 **No barcodes detected**
 - Try different preprocessing methods
 - Add a ZXing block alongside ZBar (different decoders catch different cases)
+- For noisy or low-resolution 1D crops, add a Rosepetal Projection block as a fallback
 - Check image quality and barcode size
 - Ensure barcode is not too small (< 50px) or too large
 

@@ -167,6 +167,17 @@ module.exports = function(RED) {
          * Process a single block (preprocessing + decoding)
          */
         async function processBlock(input, block, blockIndex, node, Quagga) {
+            // Projection works on the original crop; preprocessing happens inside
+            if (block.decoder === 'rp-projection') {
+                const rawResults = await decodeWithProjection(input, block);
+                return rawResults.map(result => ({
+                    ...result,
+                    blockIndex: blockIndex,
+                    decoder: block.decoder,
+                    preprocessing: null
+                }));
+            }
+
             // Apply preprocessing
             const preprocessed = await applyPreprocessing(input, block.preprocessing);
 
@@ -233,6 +244,25 @@ module.exports = function(RED) {
         async function decodeWithZXing(preprocessed, block) {
             const formats = block.options?.formats || [];
             const resultJson = await barcode.decode_zxing(preprocessed, formats);
+            const parsed = JSON.parse(resultJson);
+
+            if (parsed.error) {
+                throw new Error(parsed.error);
+            }
+
+            return parsed.results || [];
+        }
+
+        /**
+         * Decode with Rosepetal projection (noisy / low-res 1D codes)
+         */
+        async function decodeWithProjection(input, block) {
+            const formats = block.options?.formats || [];
+            const options = {
+                minVotes: block.options?.minVotes || 3,
+                stripWidth: block.options?.stripWidth || 0  // 0 = auto
+            };
+            const resultJson = await barcode.decode_projection(input, formats, options);
             const parsed = JSON.parse(resultJson);
 
             if (parsed.error) {
@@ -336,7 +366,9 @@ module.exports = function(RED) {
 
             for (const result of results) {
                 const key = result.data;  // Use only barcode value for deduplication
-                const detectionString = `${result.decoder}_${result.preprocessing}`;
+                const detectionString = result.preprocessing
+                    ? `${result.decoder}_${result.preprocessing}`
+                    : result.decoder;
 
                 if (map.has(key)) {
                     const existing = map.get(key);
@@ -346,8 +378,14 @@ module.exports = function(RED) {
                         existing.detectedBy.push(detectionString);
                     }
 
-                    // If new result has lower blockIndex, replace base detection
-                    if (result.blockIndex < existing.blockIndex) {
+                    // Replace base detection on lower blockIndex. Projection only
+                    // estimates the box, so a localizing decoder always wins it.
+                    const existingIsProjection = existing.decoder === 'rp-projection';
+                    const resultIsProjection = result.decoder === 'rp-projection';
+                    const replace = existingIsProjection !== resultIsProjection
+                        ? existingIsProjection
+                        : result.blockIndex < existing.blockIndex;
+                    if (replace) {
                         map.set(key, {
                             ...result,
                             blockIndex: result.blockIndex,

@@ -47,6 +47,11 @@
                 quagga2: [
                     'UPCA', 'UPCE', 'EAN13', 'EAN8',
                     'Code128', 'Code39', 'Code93', 'Codabar', 'ITF'
+                ],
+                'rp-projection': [
+                    'UPCA', 'UPCE', 'EAN13', 'EAN8',
+                    'Code128', 'Code39', 'Code93', 'Codabar',
+                    'ITF', 'DataBar'
                 ]
             };
 
@@ -93,6 +98,13 @@
                 blockElement.find('.formats-grid').html(checkboxes);
             }
 
+            // Projection has no preprocessing step but has its own options
+            function toggleDecoderRows(blockElement, decoder) {
+                const isProjection = decoder === 'rp-projection';
+                blockElement.find('.preprocessing-row').toggle(!isProjection);
+                blockElement.find('.projection-row').toggle(isProjection);
+            }
+
             function addBlockUI(block, index) {
                 const blockId = `block-${Date.now()}-${index}`;
                 const initialSelected = new Set(block.options?.formats || []);
@@ -116,16 +128,22 @@
                                     <option value="zbar" ${block.decoder === 'zbar' ? 'selected' : ''}>ZBar</option>
                                     <option value="zxing" ${block.decoder === 'zxing' ? 'selected' : ''}>ZXing</option>
                                     <option value="quagga2" ${block.decoder === 'quagga2' ? 'selected' : ''}>Quagga2</option>
+                                    <option value="rp-projection" ${block.decoder === 'rp-projection' ? 'selected' : ''}>Rosepetal Projection (noisy 1D)</option>
                                 </select>
                             </div>
 
-                            <div class="block-form-row">
+                            <div class="block-form-row preprocessing-row">
                                 <label>Preprocessing</label>
                                 <select class="block-preprocessing">
                                     <option value="original" ${block.preprocessing === 'original' ? 'selected' : ''}>Original</option>
                                     <option value="histogram" ${block.preprocessing === 'histogram' ? 'selected' : ''}>Histogram Equalization</option>
                                     <option value="otsu" ${block.preprocessing === 'otsu' ? 'selected' : ''}>Otsu Threshold</option>
                                 </select>
+                            </div>
+
+                            <div class="block-form-row projection-row">
+                                <label>Min votes</label>
+                                <input type="number" class="block-min-votes" min="1" step="1" value="${block.options?.minVotes || 3}">
                             </div>
 
                             <div class="block-form-row formats-row">
@@ -147,9 +165,13 @@
 
                 blocksContainer.append(blockHTML);
                 const blockElement = $(`[data-block-id="${blockId}"]`);
+                if (block.options?.stripWidth) {
+                    blockElement.data('stripWidth', block.options.stripWidth);
+                }
 
                 // Initial formats grid for this block's decoder
                 renderFormatsGrid(blockElement, block.decoder || 'zbar', initialSelected);
+                toggleDecoderRows(blockElement, block.decoder || 'zbar');
 
                 // Decoder change handler — re-render formats grid keeping still-supported selections
                 blockElement.find('.block-decoder').on('change', function() {
@@ -159,6 +181,7 @@
                         currentlyChecked.add($(this).val());
                     });
                     renderFormatsGrid(blockElement, decoder, currentlyChecked);
+                    toggleDecoderRows(blockElement, decoder);
                 });
 
                 // "All formats" toggles the grid; checking it unchecks individual formats
@@ -213,6 +236,14 @@
                     options.formats = selected;
                 } else {
                     options.formats = [];
+                }
+
+                if (decoder === 'rp-projection') {
+                    options.minVotes = parseInt(blockElement.find('.block-min-votes').val(), 10) || 3;
+                    // stripWidth is auto; a value set in the flow JSON is still honoured
+                    if (blockElement.data('stripWidth')) {
+                        options.stripWidth = blockElement.data('stripWidth');
+                    }
                 }
 
                 blocks.push({
@@ -309,11 +340,14 @@
         <li><strong>ZBar</strong>: Fast, reliable, good for standard barcodes and QR codes</li>
         <li><strong>ZXing</strong>: Comprehensive format support, thorough scan by default</li>
         <li><strong>Quagga2</strong>: JavaScript-based, good for 1D barcodes</li>
+        <li><strong>Rosepetal Projection</strong>: for noisy or low-resolution 1D codes that the others miss. Expects a crop of a single barcode. Aligns the bars, averages bands of pixels into clean 1D profiles, decodes each profile with ZBar and ZXing and accepts a value only when enough profiles agree. Slower (tens to a few hundred ms), so use it as a fallback block. 1D only; no preprocessing step (gray and each color channel are tried internally).</li>
     </ul>
 
     <h4>Per-block Options</h4>
     <ul>
-        <li><strong>Formats</strong>: allowlist of barcode symbologies. "All formats" leaves the decoder unrestricted (default). The list shown is filtered to formats the selected decoder actually supports — ZBar covers most 1D + QR/PDF417, ZXing adds DataMatrix and Aztec, Quagga2 is 1D-only.</li>
+        <li><strong>Formats</strong>: allowlist of barcode symbologies. "All formats" leaves the decoder unrestricted (default). The list shown is filtered to formats the selected decoder actually supports — ZBar covers most 1D + QR/PDF417, ZXing adds DataMatrix and Aztec, Quagga2 and Rosepetal Projection are 1D-only.</li>
+        <li><strong>Min votes</strong> (Rosepetal Projection): profile reads that must agree before a value is reported (default 3). Raise it to cut false reads, lower it for very small crops. Decoding stops early once a value has 3× this many votes and leads every other value by 3×; the vote count at that point is the result's quality.</li>
+        <li><strong>Band height</strong> (Rosepetal Projection) is automatic: 12% of the bar height, clamped to 8-48 px, with a second pass at twice that. Advanced: <code>options.stripWidth</code> (px) in the flow JSON overrides it, e.g. smaller on strongly curved surfaces.</li>
     </ul>
 
     <h4>Preprocessing Options</h4>
@@ -532,6 +566,14 @@
     #blocks-container .block-form-row select:focus {
         outline: none;
         border-color: #5c9ded;
+    }
+
+    #blocks-container .block-form-row input[type="number"] {
+        width: 80px;
+        padding: 4px 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 13px;
     }
 
     #blocks-container .checkbox-wrapper {
