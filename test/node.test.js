@@ -130,9 +130,17 @@ test('engine stderr: one RED.log.warn per line with the [rp-barcode] prefix, chu
         assert.deepEqual(runtimeWarnings().filter((m) => /^\[rp-barcode\]/.test(m)),
             ['[rp-barcode] first line', '[rp-barcode] second line', '[rp-barcode] tail without newline']);
     });
-    await withFlow(t, [ROSEPETAL, ROSEPETAL], {}, async () => {
-        assert.equal(rp.getEngine().listenerCount('stderr'), 1);         // more nodes, more loads: still one hook
-    });
+    // Two reader nodes with rosepetal blocks in one flow, another load: two refs, still one hook
+    if (!addonAvailable()) return;
+    await helper.load(barcodeNode, [...readerFlow([ROSEPETAL, ROSEPETAL]),
+        { id: 'n2', type: 'barcode-reader', name: 'reader2', inputValue: 'payload', outputValue: 'payload', executionMode: 'parallel', blocks: [ROSEPETAL], wires: [] }]);
+    try {
+        assert.equal(rp.getEngine().refs, 2);
+        assert.equal(rp.getEngine().listenerCount('stderr'), 1);
+    } finally {
+        await helper.unload();
+    }
+    assert.equal(rp.getEngine().refs, 0);
 });
 
 test('close while a decode is in flight: the node closes, no unhandled rejection, no child left', { timeout: 20000 }, async (t) => {
@@ -154,6 +162,83 @@ test('close while a decode is in flight: the node closes, no unhandled rejection
         assert.equal(unhandled.length, before, unhandled.map((e) => e && e.stack).join('\n'));
     } finally {
         delete process.env.FAKE_DELAY_MS;
+    }
+});
+
+test('close with an array of crops in flight: the closed node never restarts the engine (refs 0, no child, no orphan)', { timeout: 20000 }, async (t) => {
+    if (!addonAvailable()) return t.skip('native addon not available');
+    process.env.FAKE_DELAY_MS = '150';
+    const before = unhandled.length;
+    try {
+        await helper.load(barcodeNode, readerFlow([ROSEPETAL]));
+        const engine = rp.getEngine();
+        helper.getNode('n1').receive({ payload: Array.from({ length: 5 }, () => loadRaw('ean13.png')) });
+        for (const t0 = Date.now(); engine.pending.size === 0 && Date.now() - t0 < 3000;) await sleep(10);
+        assert.equal(engine.pending.size, 1);
+        const pid = engine.pid;
+        await helper.unload();                                         // the first crop lands within the drain; four crops are still to come
+        await sleep(500);                                              // Node-RED does not cancel the input handler: the old node runs them
+        assert.equal(engine.refs, 0);
+        assert.equal(engine.child, null);                              // nobody restarted the engine
+        assert.ok(procGone(pid));
+        assert.deepEqual(liveChildren(), []);
+        assert.equal(unhandled.length, before, unhandled.map((e) => e && e.stack).join('\n'));
+    } finally {
+        delete process.env.FAKE_DELAY_MS;
+    }
+});
+
+test('close while a decode outlives the drain: stop() rejects it, the block fails inside the old node, no unhandled rejection', { timeout: 20000 }, async (t) => {
+    if (!addonAvailable()) return t.skip('native addon not available');
+    process.env.FAKE_DELAY_MS = '2000';
+    const before = unhandled.length;
+    try {
+        await helper.load(barcodeNode, readerFlow([{ ...ROSEPETAL, options: { timeoutMs: 5000 } }]));
+        const engine = rp.getEngine();
+        const n1 = helper.getNode('n1');
+        const warns = [];
+        n1.warn = (msg) => warns.push(msg);                            // own property: survives the helper's spy restore on unload
+        n1.receive({ payload: loadRaw('ean13.png') });
+        for (const t0 = Date.now(); engine.pending.size === 0 && Date.now() - t0 < 3000;) await sleep(10);
+        assert.equal(engine.pending.size, 1);
+        const pid = engine.pid;
+        const t0 = Date.now();
+        await helper.unload();                                         // drain expires (500 ms), shutdown: the fake exits without answering
+        const took = Date.now() - t0;
+        assert.ok(took >= 450 && took < 2000, `unload took ${took} ms`);
+        await sleep(100);
+        assert.equal(engine.child, null);
+        assert.equal(engine.pending.size, 0);
+        assert.ok(procGone(pid));
+        assert.equal(warns.length, 1, warns.join('\n'));
+        assert.match(warns[0], /^Block 0 \(rosepetal\) failed: engine (exited \(code 0\)|stopped)$/);
+        assert.equal(unhandled.length, before, unhandled.map((e) => e && e.stack).join('\n'));
+    } finally {
+        delete process.env.FAKE_DELAY_MS;
+    }
+});
+
+test('engine crash: the in-flight block fails with exited; inside the wait one warn per node says it restarts, without the install hint', { timeout: 20000 }, async (t) => {
+    process.env.FAKE_CRASH_AFTER = '0';                                 // exits with status 7 on the first decode, no answer
+    rp.setEngineOptions({ backoff: { initialMs: 5000, maxMs: 5000 } });   // the wait outlasts the test: deterministic
+    try {
+        await withFlow(t, [ROSEPETAL], {}, async (n1) => {
+            const first = await runFlow(helper, loadRaw('ean13.png'));
+            assert.deepEqual(first.payload, []);
+            assert.equal(n1.warn.callCount, 1);
+            assert.equal(n1.warn.firstCall.args[0], 'Block 0 (rosepetal) failed: engine exited (code 7)');
+            const second = await runFlow(helper, loadRaw('ean13.png'));
+            assert.deepEqual(second.payload, []);
+            assert.equal(n1.warn.callCount, 2);
+            assert.match(n1.warn.secondCall.args[0], /^Rosepetal engine not available: engine unavailable, retry in \d+ ms \(engine exited \(code 7\)\)\. It is restarted by a later request$/);
+            assert.doesNotMatch(n1.warn.secondCall.args[0], /Install/);
+            await runFlow(helper, loadRaw('ean13.png'));
+            assert.equal(n1.warn.callCount, 2);                          // once per outage
+            assert.equal(rp.getEngine().child, null);
+        });
+    } finally {
+        delete process.env.FAKE_CRASH_AFTER;
+        rp.setEngineOptions({ backoff: { initialMs: 50, maxMs: 200 } });   // configure() also resets the wait
     }
 });
 
