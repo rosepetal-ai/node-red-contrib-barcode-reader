@@ -1,0 +1,28 @@
+# What the published package leaves out. npm stops reading .gitignore once this file exists, so its rules come first.
+# barcode-engine/ (binding.gyp, src/) is NOT excluded: lib/cpp-bridge.js builds the addon from it when no prebuilt
+# package loads, and INSTALL.sh builds it there.
+
+# Same rules as .gitignore
+build/
+*.node
+*.o
+node_modules/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.tgz
+
+# Not part of the published package
+artifacts/
+test/
+scripts/make-fixtures.js
+.github/
+.superpowers/
+.npmrc
+docs/validation.md
+# build-prebuild.yml copies the addon artefacts here at release time; the platform packages publish from these directories
+# on their own and the main package needs none of it
+npm/
