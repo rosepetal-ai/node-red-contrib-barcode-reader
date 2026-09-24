@@ -112,7 +112,7 @@
                 blockElement.find('.rosepetal-row').toggle(isRosepetal);
             }
 
-            // Saved option or its default (an absent, null or empty value is unset, as in lib/rp-engine.js), and
+            // Saved option or its default (an absent, null or empty value is unset, as in lib/rp-mapping.js), and
             // the attribute fragments the rosepetal rows are rendered with
             function rpOption(block, key, fallback) {
                 const value = block.options ? block.options[key] : undefined;
@@ -319,7 +319,7 @@
 
                 if (decoder === 'rosepetal') {
                     // Enums as chosen; integers through parseInt (an empty or invalid input saves the default, as
-                    // Min votes does); booleans from the checkboxes. optionsFromBlock (lib/rp-engine.js) is strict:
+                    // Min votes does); booleans from the checkboxes. optionsFromBlock (lib/rp-mapping.js) is strict:
                     // never a string number, a NaN, a negative Min lines or a Timeout below 1 in the flow
                     const minLines = parseInt(blockElement.find('.block-rp-minlines').val(), 10);
                     const timeoutMs = parseInt(blockElement.find('.block-rp-timeout').val(), 10);

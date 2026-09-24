@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const rp = require('../node-red-contrib-barcode-reader/lib/rp-engine');
+const rp = require('../node-red-contrib-barcode-reader/lib/rp-mapping');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'node-red-contrib-barcode-reader', 'barcode.html'), 'utf8');
 const section = (open, close) => {

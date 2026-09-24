@@ -15,8 +15,8 @@ const QUAGGA_FORMAT_MAP = {
 const QUAGGA_DEFAULT_READERS = Object.values(QUAGGA_FORMAT_MAP);
 
 // Rosepetal SDK engine (rp-barcode serve): one child process per Node-RED process, shared by every node with a
-// `rosepetal` block (lib/rp-engine.js)
-const rp = require('./lib/rp-engine');
+// `rosepetal` block (@rosepetal/barcode-engine-client, through lib/rp-mapping.js)
+const rp = require('./lib/rp-mapping');
 
 // Fields symbolToRaw adds to a raw result (SDK schema 1.0). convertToFinalFormat copies them only when present, so
 // the output of a zbar / zxing / quagga2 / rp-projection block is byte for byte the 1.3.0 one (regression test).
@@ -334,7 +334,7 @@ module.exports = function(RED) {
 
         /**
          * Decode with the Rosepetal SDK engine (rp-barcode serve). The addon's preprocessed gray goes to the engine
-         * as a raw 1-channel bitmap; its schema-1.0 symbols come back as raw results (lib/rp-engine.js symbolToRaw).
+         * as a raw 1-channel bitmap; its schema-1.0 symbols come back as raw results (lib/rp-mapping.js symbolToRaw).
          * An engine that cannot run (not installed, wrong protocol, or inside the wait after a failure) warns once
          * per node and yields []; any other failure (invalid input, timeout, crash, overload) throws and the caller
          * warns "Block i (rosepetal) failed: ...". Formats with nothing the SDK reads (2D only) yield [] without a call.

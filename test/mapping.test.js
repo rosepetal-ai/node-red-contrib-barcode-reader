@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const rp = require('../node-red-contrib-barcode-reader/lib/rp-engine');
+const rp = require('../node-red-contrib-barcode-reader/lib/rp-mapping');
 const { INDEX, fixture } = require('./support');
 
 // convertToFinalFormat (barcode.js) reorders the raw points [p2, p3, p4, p1] and getRotation takes
