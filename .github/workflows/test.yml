@@ -10,8 +10,8 @@
 #   npmjs, npm ci cannot resolve the node's dependency: the job says so and ends without running the tests instead of
 #   failing on an E404. Release order (CHANGELOG.md): client on npmjs -> regenerate package-lock.json -> tag v1.4.0.
 # - workflow_dispatch with clean_install_version runs only the post-release check: the published package installs in a
-#   clean node:22 container with no access to the private registry, the addon loads, the engine package is absent and
-#   the client reports it (a rosepetal block then warns once and returns []; every other decoder works).
+#   clean node:22 and node:20 container with no access to the private registry, the addon loads, the engine package is
+#   absent and the client reports it (a rosepetal block then warns once and returns []; every other decoder works).
 name: Test
 
 on:
@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       clean_install_version:
-        description: 'Published version to install in a clean node:22 container without private registry access; empty = run the tests'
+        description: 'Published version to install in clean node:22 and node:20 containers without private registry access; empty = run the tests'
         required: false
         default: ''
         type: string
@@ -53,17 +53,24 @@ jobs:
         id: client
         run: |
           range="$(node -p "require('./package.json').dependencies['$CLIENT']")"
-          if version="$(npm view "$CLIENT@$range" version 2>/dev/null | tail -n 1)" && [ -n "$version" ]; then
+          # Only an E404 (not published, or no version inside the range) means "skip". Any other failure of npm view
+          # (network, registry 5xx) fails the job: a pull request can never go green without tests once the client exists.
+          if out="$(npm view "$CLIENT@$range" version 2>&1)"; then
+            version="$(printf '%s\n' "$out" | tail -n 1)"
             echo "available=true" >> "$GITHUB_OUTPUT"
             echo "$CLIENT@$range resolves on npmjs ($version)"
             if ! grep -q '"node_modules/@rosepetal/barcode-engine-client"' package-lock.json; then
               echo "::error::package-lock.json has no entry for $CLIENT: run 'npm install --package-lock-only --no-audit --no-fund' and commit the lock (release order in CHANGELOG.md)"
               exit 1
             fi
-          else
+          elif printf '%s\n' "$out" | grep -q 'E404'; then
             echo "available=false" >> "$GITHUB_OUTPUT"
             echo "::warning::$CLIENT@$range is not on npmjs yet: the SDK repository publishes it (rosepetal-barcode-sdk/clients/node). Nothing to install, tests skipped."
             echo "tests skipped: $CLIENT@$range is not published yet (see CHANGELOG.md, release order)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' "$out"
+            echo "::error::npm view $CLIENT@$range failed (not an E404)"
+            exit 1
           fi
 
       - name: npm ci (the client's private optionalDependencies, the engine packages, are skipped with a warning)
@@ -104,7 +111,9 @@ jobs:
           npmrc="$RUNNER_TEMP/npmrc"
           trap 'rm -f "$npmrc"' EXIT
           umask 077
-          printf '//%s/:_authToken=%s\n' "$ENGINE_REGISTRY" "$(gcloud auth print-access-token)" > "$npmrc"
+          token="$(gcloud auth print-access-token)"
+          echo "::add-mask::$token"
+          printf '//%s/:_authToken=%s\n' "$ENGINE_REGISTRY" "$token" > "$npmrc"
           # Outside the project on purpose: an install inside it would reconcile the whole tree against the private
           # registry and prune the addon installed with --no-save above (its optional edge 404s there)
           NPM_CONFIG_USERCONFIG="$npmrc" npm install --prefix "$RUNNER_TEMP/engine" --no-audit --no-fund \
@@ -130,7 +139,11 @@ jobs:
   clean-install:
     if: github.event_name == 'workflow_dispatch' && inputs.clean_install_version != ''
     runs-on: ubuntu-22.04
-    container: node:22
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 20]   # 20: one pass under the engines.node >=18 floor (the tests need 22.9 only for node-red 5)
+    container: node:${{ matrix.node }}
     env:
       V: ${{ inputs.clean_install_version }}
     steps:
@@ -143,9 +156,12 @@ jobs:
           npm install --no-audit --no-fund "@rosepetal/node-red-contrib-barcode-reader@$V" 2>&1 | tee install.log
           pkg=/w/node_modules/@rosepetal/node-red-contrib-barcode-reader
           test "$(node -p "require('$pkg/package.json').version")" = "$V"
-          test -e "node_modules/$CLIENT/package.json" && echo "client installed: $(node -p "require('$CLIENT/package.json').version")"
-          test -e "node_modules/$ADDON_PACKAGE/lib/addon.node" && echo "addon package installed"
-          test ! -e "node_modules/$ENGINE_PACKAGE" && echo "engine package absent, as expected"
+          test -e "node_modules/$CLIENT/package.json" || { echo "::error::$CLIENT is not installed"; exit 1; }
+          echo "client installed: $(node -p "require('$CLIENT/package.json').version")"
+          test -e "node_modules/$ADDON_PACKAGE/lib/addon.node" || { echo "::error::$ADDON_PACKAGE (prebuilt addon) is not installed"; exit 1; }
+          echo "addon package installed"
+          test ! -e "node_modules/$ENGINE_PACKAGE" || { echo "::error::$ENGINE_PACKAGE is present: the private registry was reachable, this is not a clean install"; exit 1; }
+          echo "engine package absent, as expected"
           grep -Ei 'optional|E404|barcode-engine' install.log || echo "(npm printed no optional-dependency warning; the absence check is the assertion)"
           node -e "
             const { resolveBinary } = require('$CLIENT');
@@ -155,4 +171,4 @@ jobs:
             console.log('a rosepetal block would warn \"Rosepetal engine not available\" once and return []');"
           node -e "require('$pkg/node-red-contrib-barcode-reader/lib/cpp-bridge.js'); console.log('addon loaded: zbar/zxing/quagga2/rp-projection blocks work')"
           node -e "const m = require('$pkg/node-red-contrib-barcode-reader/barcode.js'); if (typeof m !== 'function') process.exit(1); console.log('node module loads (palette entry ok)')"
-          echo "clean install of @rosepetal/node-red-contrib-barcode-reader@$V: ok (engine absent, addon and client present)" >> "$GITHUB_STEP_SUMMARY"
+          echo "clean install of @rosepetal/node-red-contrib-barcode-reader@$V on node $(node --version): ok (engine absent, addon and client present)" >> "$GITHUB_STEP_SUMMARY"
