@@ -197,7 +197,15 @@ test('help: Rosepetal SDK section, what changes, detectedBy documented as an arr
         '<li><strong>Effort</strong> (Rosepetal SDK)', '<li><strong>Flags</strong> (Rosepetal SDK)']) {
         assert.ok(help.includes(heading), heading);
     }
-    assert.match(help, /detectedBy: \["zbar_original", "rosepetal_original"\]/);
+    assert.match(help, /detectedBy: \["rosepetal_original", "zbar_original"\]/);   // the example carries the SDK fields: the SDK block read it first
+    assert.match(help, /the Rosepetal SDK block read it first, so the result also carries:/);
+    // M2/M3 of the branch review: what the code really does, and the mixed-flow effects
+    for (const phrase of ['the package and <code>PATH</code> are then not searched', 'restarted after 1 s if it dies',
+        'Rosepetal engine 0.2.0+&lt;commit&gt; (protocol 1, pid N)', 'every crop of the same message that falls inside that wait gets <code>[]</code>',
+        'UPC-E comes out as its 8 digits', '<code>012345000065</code> into <code>01234565</code>', 'a GS1-128 keeps the form of the first block that read it']) {
+        assert.ok(help.includes(phrase), `help says: ${phrase}`);
+    }
+    assert.equal(help.includes('1 s to 30 s'), false);                 // a crash loop retries every 1 s: the growing wait is for a binary that fails to start
     assert.equal(help.includes('blocks: [0, 1]'), false);                // the old object form is gone
     assert.equal(help.includes('decoders: ['), false);
     assert.match(help, /Effort <code>normal<\/code>/);                 // directions and the inverted pass need it
