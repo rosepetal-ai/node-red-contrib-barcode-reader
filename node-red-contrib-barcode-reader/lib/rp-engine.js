@@ -6,8 +6,9 @@
  *
  * Errors are EngineError with a `code`: `unavailable` (no binary, no hello, cannot run, or inside the wait after a
  * failure), `protocol` (hello with another protocol, a bad frame, a reply with a payload), `exited` (the process
- * went away with the request in flight), `timeout` (the client's timer), `overloaded` (the client queue is full),
- * plus the server's own codes verbatim (`invalid_input`, `unsupported`, `overloaded`, `deadline`, `internal`).
+ * went away with the request in flight), `timeout` (the client's timer), `overloaded` (the client queue is full,
+ * or the engine has not taken the bytes already written to its stdin: `maxBufferedBytes`), plus the server's own
+ * codes verbatim (`invalid_input`, `unsupported`, `overloaded`, `deadline`, `internal`).
  *
  * Events: 'started' ({pid, hello, source}), 'exit' ({code, signal}), 'stderr' (text). Never 'error'.
  */
@@ -118,9 +119,10 @@ const DEFAULTS = {
     env: null,                  // null: process.env
     maxQueue: 128,              // requests in flight before `overloaded` (overview §4.3)
     maxBufferedBytes: 256 << 20, // bytes still unwritten to the engine's stdin before `overloaded`: 256 MiB, the
-                                //   protocol's default maxPayload, so one frame of any legal size fits an idle pipe and
-                                //   more than that means the engine is not reading (a timed-out request leaves
-                                //   `pending`, but its bytes stay in the pipe buffer until the engine takes them)
+                                //   protocol's default maxPayload. An idle pipe (nothing unwritten) always takes one
+                                //   frame, whatever its size; the budget applies once bytes pile up, which means the
+                                //   engine is not reading (a timed-out request leaves `pending`, but its bytes stay in
+                                //   the pipe buffer until the engine takes them)
     helloTimeoutMs: 5000,
     defaultTimeoutMs: DEFAULT_TIMEOUT_MS,
     backoff: { initialMs: 1000, maxMs: 30000 },
@@ -408,7 +410,7 @@ class Engine extends EventEmitter {
             }
             const bytes = frame[0].length + frame[1].length;
             const buffered = this.child.stdin.writableLength;
-            if (buffered + bytes > this.opts.maxBufferedBytes) {
+            if (buffered > 0 && buffered + bytes > this.opts.maxBufferedBytes) {
                 return reject(new EngineError('overloaded',
                     `engine overloaded (${buffered} bytes still unwritten, ${bytes} more would exceed ${this.opts.maxBufferedBytes})`));
             }

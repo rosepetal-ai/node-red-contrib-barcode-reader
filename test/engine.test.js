@@ -350,6 +350,27 @@ test('stalled engine: unwritten stdin bytes are bounded by maxBufferedBytes, the
     assert.equal(engine.pending.size, 0);
 });
 
+test('stdin byte budget: one frame of any legal size always fits an idle pipe, the next one waits on the budget', async () => {
+    // maxBufferedBytes below one frame: an idle engine (nothing unwritten) still takes the frame, so a payload up to
+    // hello.limits.maxPayload is never `overloaded` on its own; with bytes still unwritten the budget applies
+    const engine = fake({}, { maxBufferedBytes: 1000 });
+    assert.ok(GRAY.width * GRAY.height > 1000);
+    const { symbols } = await engine.decode(GRAY, PIXELS, {});
+    assert.equal(symbols[0].value, '4006381333931');
+    await engine.stop();
+    // A deaf engine: the first 1 MiB frame goes in (the kernel takes 64 KiB, the rest stays unwritten and the request
+    // times out), the second is refused at once because the first is still unwritten
+    const stalled = fake({ FAKE_STALL: '1', FAKE_IGNORE_STOP: '1' }, { maxBufferedBytes: 1000, exitMs: 200 });
+    await stalled.start();
+    const image = { width: 1024, height: 1024, channels: 1, colorSpace: 'GRAY' };
+    const payload = Buffer.alloc(1024 * 1024, 0x80);
+    const first = stalled.decode(image, payload, {}, { timeoutMs: 30 });
+    await rejects(stalled.decode(image, payload, {}, { timeoutMs: 30 }), 'overloaded', /bytes still unwritten/);
+    await rejects(first, 'timeout');
+    await stalled.stop();
+    assert.equal(stalled.child, null);
+});
+
 test('resolveBinary: RP_BARCODE_ENGINE is explicit (missing, not executable, ok) and the fake runs through it', async () => {
     const saved = process.env.RP_BARCODE_ENGINE;
     let dir;
@@ -388,9 +409,9 @@ test('resolveBinary: without RP_BARCODE_ENGINE, the platform package, then PATH,
     const modules = path.join(tmp, 'node_modules');
     const pkgDir = path.join(modules, pkg);
     const bin = path.join(tmp, 'bin');
-    fs.mkdirSync(bin, { recursive: true });
     const resolve = () => resolveBinary({ paths: [modules] });
     try {
+        fs.mkdirSync(bin, { recursive: true });
         await withEnv({ RP_BARCODE_ENGINE: undefined, PATH: bin }, () => {
             assert.throws(resolve, (err) => err instanceof EngineError && err.code === 'unavailable'
                 && err.message.includes(`${pkg} is not installed`) && err.message.includes('rp-barcode is not in PATH'));
