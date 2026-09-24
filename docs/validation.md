@@ -16,12 +16,13 @@ correct reads as the best of the ZBar and ZXing blocks**. With no region carryin
 - A Node-RED (>= 3; the node's runtime floor is Node >= 18) with `@rosepetal/node-red-contrib-image-tools` for
   `rp-image-in` / `rp-cropBB`, or any other way to load a raw bitmap and to crop it (the reader accepts the raw bitmap
   `{data, width, height, channels, colorSpace}` or an encoded JPEG/PNG Buffer, single or array).
-- Three tarballs:
+- Four tarballs, always installed together (step 2):
 
 | Tarball | Where from |
 |---|---|
 | `rosepetal-node-red-contrib-barcode-reader-1.4.0.tgz` | `npm pack @rosepetal/node-red-contrib-barcode-reader@1.4.0`, or `npm pack` in a checkout of this repository |
 | `rosepetal-barcode-engine-client-0.2.0.tgz` | `npm pack @rosepetal/barcode-engine-client@0.2.0` |
+| `rosepetal-node-red-contrib-barcode-reader-linux-x64-<v>.tgz` (or `-linux-arm64-`, `-linuxmusl-x64-`) | the prebuilt addon: `npm pack @rosepetal/node-red-contrib-barcode-reader-linux-x64@1.4.0` once it is published, **`@1.3.0` before the `v1.4.0` tag** (the same C++). Without it the install of the node tarball drops the addon already in the user dir (the node pins `1.4.0` as an optional dependency: npm removes the other version and skips the missing one) and every `barcode-reader` node of the runtime fails to load after the restart |
 | `rosepetal-barcode-engine-linux-x64-0.2.0.tgz` (or `-linux-arm64-`) | the platform package of the engine from Rosepetal's private registry, fetched **outside** the user dir with a token: `REG=europe-southwest1-npm.pkg.dev/rosepetal-artifact/private-node-packages; npm pack @rosepetal/barcode-engine-linux-x64@0.2.0 --registry=https://$REG/ "--//$REG/:_authToken=$(gcloud auth print-access-token)"`. Without it, a bare `rp-barcode` binary (SDK >= 0.2.0) and `RP_BARCODE_ENGINE=/path/to/rp-barcode` in the Node-RED environment do the same |
 
 - Images with **known values**: a full image with several codes (the "whole" lane) and N captures with the regions of
@@ -32,18 +33,19 @@ correct reads as the best of the ZBar and ZXing blocks**. With no region carryin
 
 ## 2. Install into the user dir
 
-The three packages go in as **local tarballs in one `npm install`**: the node's dependency on the client (`^0.2.0`)
-and the client's optional dependency on the engine (`0.2.0`) are satisfied by the tarballs, so npm queries no registry
-for them. Never run `npm install --registry=<private> …` inside the user dir (it reconciles the whole tree against that
+The four packages go in as **local tarballs in one `npm install`**: the node's dependency on the client (`^0.2.0`),
+the client's optional dependency on the engine (`0.2.0`) and the prebuilt addon (the 1.4.0 package, or 1.3.0 installed
+explicitly while 1.4.0 is not published) are satisfied by the tarballs, so npm queries no registry for them and keeps
+the addon. Never run `npm install --registry=<private> …` inside the user dir (it reconciles the whole tree against that
 registry), and keep the tarballs where you installed them from: `package.json` records them as `file:` specs.
 
-- [ ] Back up `package.json` and `package-lock.json` of the user dir (the rollback in step 7 restores them).
+- [ ] Back up `package.json` and `package-lock.json` of the user dir (the rollback in step 6 restores them).
 - [ ] Install and check:
 
 ```bash
 cd ~/.node-red
 cp package.json package.json.pre-1.4.0 && cp package-lock.json package-lock.json.pre-1.4.0
-npm install --no-audit --no-fund ./rosepetal-node-red-contrib-barcode-reader-1.4.0.tgz ./rosepetal-barcode-engine-client-0.2.0.tgz ./rosepetal-barcode-engine-linux-x64-0.2.0.tgz
+npm install --no-audit --no-fund ./rosepetal-node-red-contrib-barcode-reader-1.4.0.tgz ./rosepetal-node-red-contrib-barcode-reader-linux-x64-<v>.tgz ./rosepetal-barcode-engine-client-0.2.0.tgz ./rosepetal-barcode-engine-linux-x64-0.2.0.tgz   # <v> = 1.3.0 before the v1.4.0 tag, 1.4.0 after
 node -p "require('./node_modules/@rosepetal/node-red-contrib-barcode-reader/package.json').version"     # 1.4.0
 node -p "require('./node_modules/@rosepetal/barcode-engine-client/package.json').version"               # 0.2.0
 node_modules/@rosepetal/barcode-engine-linux-x64/bin/rp-barcode version                                 # rp-barcode 0.2.0 (schema 1.0, …, build <rev>)
@@ -51,7 +53,7 @@ node -e "require('./node_modules/@rosepetal/node-red-contrib-barcode-reader/node
 node -e "console.log(require('./node_modules/@rosepetal/barcode-engine-client').resolveBinary())"        # { path: '…/bin/rp-barcode', source: '@rosepetal/barcode-engine-linux-x64' }
 ```
 
-  With a bare binary instead of the engine tarball: install the first two tarballs, then either set
+  With a bare binary instead of the engine tarball: install the node, addon and client tarballs, then either set
   `RP_BARCODE_ENGINE` in the Node-RED environment or give the binary the layout the client looks for
   (`node_modules/@rosepetal/barcode-engine-linux-x64/bin/rp-barcode`, executable, next to a `package.json` with that
   `name` and `"version": "0.2.0"`; a later `npm install` in the user dir may prune that directory).
@@ -314,9 +316,9 @@ wrong read; a different value at the same place is), correct reads against the b
 cd ~/.node-red
 cp package.json.pre-1.4.0 package.json && cp package-lock.json.pre-1.4.0 package-lock.json
 npm install --no-audit --no-fund
-rm -f rosepetal-node-red-contrib-barcode-reader-1.4.0.tgz rosepetal-barcode-engine-client-0.2.0.tgz rosepetal-barcode-engine-linux-x64-0.2.0.tgz
+rm -f rosepetal-node-red-contrib-barcode-reader-1.4.0.tgz rosepetal-node-red-contrib-barcode-reader-linux-x64-<v>.tgz rosepetal-barcode-engine-client-0.2.0.tgz rosepetal-barcode-engine-linux-x64-0.2.0.tgz
 ```
 
 Then restart Node-RED. If your Node-RED image keeps its own record of user-installed packages, check it after the
-rollback (your deployment's runbook says where). Disable or delete the validation tab: its two `rosepetal` nodes hold
+rollback (your deployment's runbook says where): it must no longer list the client, the engine or the addon tarball. Disable or delete the validation tab: its two `rosepetal` nodes hold
 the engine while deployed (the process stops when the last node with a `rosepetal` block closes).

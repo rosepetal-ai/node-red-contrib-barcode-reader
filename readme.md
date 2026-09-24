@@ -588,7 +588,8 @@ npm run rebuild
 - CI: `.github/workflows/test.yml` (push to `main` and pull requests: the tests, the real binary when the `GCP_SA_KEY`
   secret exists, and a `workflow_dispatch` clean-container install check of a published version) and
   `.github/workflows/build-prebuild.yml` (tag `v*`: addon packages and this package on npmjs).
-- Releases: `CHANGELOG.md` (the 1.4.0 entry states the release order: client on npmjs, lock regenerated, then the tag);
+- Releases: `CHANGELOG.md` (the 1.4.0 entry states the release order: client on npmjs, lock regenerated, then the tag,
+  then the lock regenerated again once the tag has published the addon packages);
   `docs/validation.md` explains how to validate the `rosepetal` decoder on a Node-RED against the other blocks
   (the site-specific runbook of a deployment lives with that deployment).
 

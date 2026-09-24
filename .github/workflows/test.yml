@@ -8,7 +8,8 @@
 #   without the GCP_SA_KEY secret (forks, pull requests from forks: the secret is not exposed to them).
 # - Until @rosepetal/barcode-engine-client (published by the SDK repository, rosepetal-barcode-sdk/clients/node) is on
 #   npmjs, npm ci cannot resolve the node's dependency: the job says so and ends without running the tests instead of
-#   failing on an E404. Release order (CHANGELOG.md): client on npmjs -> regenerate package-lock.json -> tag v1.4.0.
+#   failing on an E404. Release order (CHANGELOG.md): client on npmjs -> regenerate package-lock.json -> tag v1.4.0 ->
+#   regenerate package-lock.json again (the tag publishes the addon packages the lock only holds as placeholders).
 # - workflow_dispatch with clean_install_version runs only the post-release check: the published package installs in a
 #   clean node:22 and node:20 container with no access to the private registry, the addon loads, the engine package is
 #   absent and the client reports it (a rosepetal block then warns once and returns []; every other decoder works).

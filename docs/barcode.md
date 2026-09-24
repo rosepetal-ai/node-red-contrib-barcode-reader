@@ -450,7 +450,7 @@ All native decoding and preprocessing runs on C++ async workers. This means:
 
 1. **Number of blocks**: More blocks = longer execution (in Parallel mode)
 2. **Preprocessing method**: Original < Histogram < Otsu
-3. **Decoder choice**: ZBar < ZXing < Quagga2 < Rosepetal Projection (approximate; Quagga2 is the slow JavaScript path). The Rosepetal SDK is measured per crop in *Decoder Options* above (about 11-13 ms per 600×300 crop with `robust`, less with `normal`): between ZBar and ZXing on crops, slower than both on a large image with no code
+3. **Decoder choice**: ZBar < ZXing < Quagga2 < Rosepetal Projection (approximate; Quagga2 is the slow JavaScript path). The Rosepetal SDK is measured per crop in *Decoder Options* above (about 11-13 ms per 600×300 crop with `robust`, less with `normal`): with `robust` it is slower than ZBar and ZXing (20-25× zxing-cpp per crop in the SDK benchmarks), more so on a large image with no code
 4. **Image size**: Larger images take longer (Rosepetal Projection scales with crop height × width)
 
 ### Optimization Strategies
