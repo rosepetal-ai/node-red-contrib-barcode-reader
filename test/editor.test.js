@@ -108,10 +108,10 @@ test('block template: defaults, a saved block and a legacy block render the righ
     const fresh = renderBlock(ROSEPETAL);
     assert.match(fresh, /<option value="rosepetal"\s+selected>Rosepetal SDK<\/option>/);
     assert.equal((fresh.match(/class="block-form-row rosepetal-row"/g) || []).length, 7);
-    assert.deepEqual(optionValues(fresh, 'block-rp-effort'), ['robust', 'normal']);
-    assert.deepEqual(optionValues(fresh, 'block-rp-directions'), ['both', 'horizontal', 'vertical']);
-    assert.deepEqual(optionValues(fresh, 'block-rp-addon'), ['ignore', 'read', 'require']);
-    assert.deepEqual(optionValues(fresh, 'block-rp-quietzone'), ['tolerant', 'spec']);
+    // The four selects offer exactly the vocabulary optionsFromBlock enforces, in its order (OPTION_VALUES)
+    const enums = Object.entries(CONTROLS).filter(([, [, kind]]) => kind === 'enum').map(([key, [cls]]) => [key, cls]);
+    assert.deepEqual(enums.map(([key]) => key), Object.keys(rp.OPTION_VALUES), 'one select per enumerated option');
+    for (const [key, cls] of enums) assert.deepEqual(optionValues(fresh, cls), rp.OPTION_VALUES[key], cls);
     assert.equal(selectedOption(fresh, 'block-rp-effort'), 'robust');
     assert.equal(selectedOption(fresh, 'block-rp-directions'), 'both');
     assert.equal(selectedOption(fresh, 'block-rp-addon'), 'ignore');

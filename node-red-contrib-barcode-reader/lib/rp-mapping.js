@@ -7,11 +7,10 @@
  * shared with node-red-contrib-barcode-verifier so one Node-RED runtime runs one rp-barcode process (D9); this
  * module re-exports the part of it the node and its tests use, so barcode.js requires one thing.
  */
-const client = require('@rosepetal/barcode-engine-client');
 const {
     EngineError, INSTALL_HINT, DEFAULT_TIMEOUT_MS, FORMAT_NAMES, ADDON_NAMES, formatName,
     getEngine, setEngineOptions, acquire, release, FAKE_ENGINE
-} = client;
+} = require('@rosepetal/barcode-engine-client');
 
 // The names of the node's Formats list (barcode.html) that the SDK reads: the same identifiers as `symbologies`
 const SDK_SYMBOLOGIES = Object.keys(FORMAT_NAMES);
@@ -117,7 +116,7 @@ function optionsFromBlock(block) {
 module.exports = {
     // This node's mapping
     SDK_SYMBOLOGIES, OPTION_VALUES, symbolToRaw, optionsFromBlock,
-    // Re-exported from @rosepetal/barcode-engine-client (the shared engine: barcode.js and the tests need no second require)
+    // Re-exported from @rosepetal/barcode-engine-client (the shared engine): barcode.js and the tests require only this module
     EngineError, INSTALL_HINT, DEFAULT_TIMEOUT_MS, FORMAT_NAMES, ADDON_NAMES, formatName,
     getEngine, setEngineOptions, acquire, release, FAKE_ENGINE
 };

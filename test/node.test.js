@@ -10,8 +10,7 @@ const helper = require('node-red-node-test-helper');
 const rp = require('../node-red-contrib-barcode-reader/lib/rp-mapping');
 const { loadRaw, fixture, addonAvailable, procGone, liveChildren, readerFlow, runFlow } = require('./support');
 
-const { FAKE_ENGINE } = require('@rosepetal/barcode-engine-client');
-process.env.RP_BARCODE_ENGINE = FAKE_ENGINE;               // every start of the shared engine in this file spawns the package's fake
+process.env.RP_BARCODE_ENGINE = rp.FAKE_ENGINE;            // every start of the shared engine in this file spawns the client's fake
 rp.setEngineOptions({ helloTimeoutMs: 3000, backoff: { initialMs: 50, maxMs: 200 }, drainMs: 500, exitMs: 300 });
 helper.init(require.resolve('node-red'));
 const barcodeNode = require('../node-red-contrib-barcode-reader/barcode.js');
